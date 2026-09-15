@@ -29,9 +29,9 @@ jobs:
         id: vars
         run: |
           if [ "${{ github.ref_name }}" = "dev" ]; then
-            echo "tag=dev" >> "$GITHUB_OUTPUT"
+            echo "tag=suivi_temps-dev" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=latest" >> "$GITHUB_OUTPUT"
+            echo "tag=suivi_temps-latest" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build and push
@@ -42,5 +42,5 @@ jobs:
           build-args: |
             GIT_SHA=${{ github.sha }}
           tags: |
-            ghcr.io/kaamichaud02/suivi_temps:${{ steps.vars.outputs.tag }}
-            ghcr.io/kaamichaud02/suivi_temps:${{ github.sha }}
+            ghcr.io/kaamichaud02/hub:${{ steps.vars.outputs.tag }}
+            ghcr.io/kaamichaud02/hub:suivi_temps-${{ github.sha }}
