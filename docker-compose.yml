@@ -3,7 +3,7 @@ version: "3.8"
 services:
   hub:
     build: ./hub-app
-    image: ghcr.io/kaamichaud02/hub:dev
+    image: ghcr.io/kaamichaud02/hub:latest
     container_name: hub-kaa-zone
     restart: unless-stopped
     environment:
