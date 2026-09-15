@@ -15,9 +15,12 @@ Variables d'environnement requises :
   protège le hub (Zero Trust > Access > Applications)
 """
 import os
+import secrets
+from datetime import datetime
 import jwt
 from jwt import PyJWKClient
 from fastapi import Request, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select, func
 
 from .timesheets_db import get_session_st
@@ -68,23 +71,82 @@ def extract_token(request: Request) -> str | None:
     return request.cookies.get("CF_Authorization")
 
 
+def unique_username(session_st: Session, base: str) -> str:
+    """Dérive un username unique à partir d'une base (email ou nom souhaité) —
+    partagé entre la création auto (get_current_user) et la création manuelle
+    (admin_routes.py) pour ne pas dupliquer la logique."""
+    candidate = base
+    suffix = 1
+    while session_st.exec(select(AuthUser).where(AuthUser.username == candidate)).first():
+        suffix += 1
+        candidate = f"{base}{suffix}"
+    return candidate
+
+
+def get_or_create_user(session_st: Session, email: str) -> AuthUser:
+    """Résout un email déjà vérifié par le JWT Cloudflare Access vers un
+    compte auth_user, en le créant s'il n'existe pas encore. La sécurité
+    (qui peut se connecter du tout) est déjà assurée par la policy
+    Cloudflare Access — un email qui atteint ce point a déjà passé ce
+    filtre, donc plus besoin de provisioning manuel côté hub. Toujours créé
+    sans droits admin (is_superuser=False) ; nom vide au départ, la personne
+    le configure elle-même via l'engrenage (PATCH /api/whoami) — rester
+    admin reste un acte manuel (page Administration).
+
+    Appelé à la fois par get_current_user (routes /api/timesheets,
+    /api/recipes, /api/admin) et par GET /api/whoami dans main.py, pour que
+    le compte existe dès la première visite plutôt que seulement après avoir
+    touché une section qui l'exige."""
+    user = session_st.exec(
+        select(AuthUser).where(func.lower(AuthUser.email) == email.lower())
+    ).first()
+    if user:
+        return user
+
+    username = unique_username(session_st, email.split("@")[0])
+    user = AuthUser(
+        password="!" + secrets.token_hex(20),  # convention Django "mot de passe inutilisable" — jamais vérifié, auth 100% déléguée au JWT Cloudflare
+        last_login=None,
+        is_superuser=False,
+        username=username,
+        first_name="",
+        last_name="",
+        email=email,
+        is_staff=False,
+        is_active=True,
+        date_joined=datetime.utcnow(),
+    )
+    session_st.add(user)
+    try:
+        session_st.commit()
+    except IntegrityError:
+        # Course entre deux requêtes simultanées de la même personne au tout
+        # premier login — l'une des deux a gagné, on relit ce qu'elle a créé.
+        session_st.rollback()
+        user = session_st.exec(
+            select(AuthUser).where(func.lower(AuthUser.email) == email.lower())
+        ).first()
+        if not user:
+            raise
+    else:
+        session_st.refresh(user)
+    return user
+
+
 def get_current_user(
     request: Request,
     session_st: Session = Depends(get_session_st),
 ) -> CurrentUser:
     """Dépendance FastAPI : résout l'utilisateur courant à partir du JWT
-    Cloudflare Access. Pas de token/JWT invalide -> 401. Email vérifié mais
-    absent de auth_user -> 403 (jamais de création automatique de compte,
-    un admin doit l'ajouter via la section Administration)."""
+    Cloudflare Access. Pas de token/JWT invalide -> 401 (Cloudflare Access
+    est la seule barrière d'authentification — un email qui arrive ici a
+    déjà été autorisé par sa policy, donc le compte auth_user est
+    auto-créé s'il n'existe pas encore, plutôt que rejeté)."""
     email = get_verified_email(extract_token(request))
     if not email:
         raise HTTPException(status_code=401, detail="Identité Cloudflare manquante ou invalide")
 
-    user = session_st.exec(
-        select(AuthUser).where(func.lower(AuthUser.email) == email.lower())
-    ).first()
-    if not user:
-        raise HTTPException(status_code=403, detail="Compte non trouvé")
+    user = get_or_create_user(session_st, email)
 
     return CurrentUser(
         id=user.id,

@@ -10,7 +10,7 @@ from sqlmodel import Session, select, func
 from .timesheets_db import get_session_st
 from .timesheets_models import AuthUser
 from .timesheets_schemas import AdminUserCreate, CurrentUser
-from .timesheets_auth import require_superuser
+from .timesheets_auth import require_superuser, unique_username
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -25,15 +25,6 @@ def _serialize_user(user: AuthUser) -> dict:
         "is_superuser": user.is_superuser,
         "is_active": user.is_active,
     }
-
-
-def _unique_username(session_st: Session, base: str) -> str:
-    candidate = base
-    suffix = 1
-    while session_st.exec(select(AuthUser).where(AuthUser.username == candidate)).first():
-        suffix += 1
-        candidate = f"{base}{suffix}"
-    return candidate
 
 
 @router.get("/users")
@@ -58,7 +49,7 @@ def create_user(
         raise HTTPException(409, "Un compte existe déjà avec cet email")
 
     base_username = payload.username or payload.email.split("@")[0]
-    username = _unique_username(session_st, base_username)
+    username = unique_username(session_st, base_username)
 
     user = AuthUser(
         password="!" + secrets.token_hex(20),  # convention Django "mot de passe inutilisable" — jamais vérifié, auth 100% déléguée au JWT Cloudflare

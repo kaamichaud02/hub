@@ -1,6 +1,7 @@
-"""Réplique les 3 scénarios de suivi_temps/timesheets/tests.py
-(CloudflareAccessMiddlewareTests), adaptés à la dépendance FastAPI
-get_current_user : email connu -> OK, email inconnu -> 403, pas de jeton -> 401.
+"""Scénarios pour la dépendance FastAPI get_current_user : email connu -> OK,
+email inconnu mais vérifié par Cloudflare Access -> compte auto-créé (la
+policy Cloudflare Access est la seule barrière d'authentification), pas de
+jeton -> 401.
 """
 from unittest.mock import MagicMock
 import pytest
@@ -38,14 +39,20 @@ def test_known_email_resolves_user(monkeypatch):
     assert result.is_superuser is True
 
 
-def test_unknown_email_returns_403(monkeypatch):
-    monkeypatch.setattr(timesheets_auth, "get_verified_email", lambda token: "inconnu@example.com")
+def test_unknown_email_auto_creates_user(monkeypatch):
+    # Aucun compte existant (ni pour l'email, ni collision de username) —
+    # simule ce qu'une vraie session ferait : refresh() peuple l'id après commit.
+    monkeypatch.setattr(timesheets_auth, "get_verified_email", lambda token: "nouveau@example.com")
     session = _fake_session(None)
+    session.refresh = MagicMock(side_effect=lambda obj: setattr(obj, "id", 42))
 
-    with pytest.raises(HTTPException) as exc_info:
-        timesheets_auth.get_current_user(_fake_request(), session)
+    result = timesheets_auth.get_current_user(_fake_request(), session)
 
-    assert exc_info.value.status_code == 403
+    assert result.email == "nouveau@example.com"
+    assert result.is_superuser is False  # jamais admin à la création automatique
+    assert result.first_name == ""
+    session.add.assert_called_once()
+    session.commit.assert_called_once()
 
 
 def test_no_token_returns_401(monkeypatch):

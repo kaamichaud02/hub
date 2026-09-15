@@ -3,7 +3,7 @@ from typing import List
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from sqlmodel import Session, select, func
+from sqlmodel import Session, select
 
 from .database import init_db, get_session
 from .models import Board, Column, Task
@@ -14,7 +14,7 @@ from .schemas import (
 )
 from .timesheets_db import get_session_st
 from .timesheets_models import AuthUser
-from .timesheets_auth import get_verified_email, extract_token, get_current_user, CF_ACCESS_TEAM_DOMAIN
+from .timesheets_auth import get_verified_email, extract_token, get_current_user, get_or_create_user, CF_ACCESS_TEAM_DOMAIN
 from .timesheets_schemas import CurrentUser, WhoamiUpdate
 from .timesheets_routes import router as timesheets_router
 from .admin_routes import router as admin_router
@@ -93,24 +93,24 @@ def version():
 @app.get("/api/whoami")
 def whoami(request: Request, session_st: Session = Depends(get_session_st)):
     # Vérifie réellement la signature du JWT Cloudflare Access (JWKS) au lieu
-    # de faire confiance à un header — voir timesheets_auth.py. N'exige pas de
-    # compte auth_user : un utilisateur kanban-only doit pouvoir passer ici,
-    # seules les routes /api/timesheets et /api/admin exigent un compte.
+    # de faire confiance à un header — voir timesheets_auth.py. Cloudflare
+    # Access est la seule barrière d'authentification (sa policy décide qui
+    # peut même atteindre le hub) : un email vérifié ici obtient donc son
+    # compte auth_user tout de suite, créé au besoin, plutôt que d'attendre
+    # qu'il touche une section qui l'exige.
     email = get_verified_email(extract_token(request))
     if not email:
         return {
             "email": None, "first_name": None, "last_name": None,
             "is_superuser": False, "has_account": False, "logout_url": None,
         }
-    user = session_st.exec(
-        select(AuthUser).where(func.lower(AuthUser.email) == email.lower())
-    ).first()
+    user = get_or_create_user(session_st, email)
     return {
         "email": email,
-        "first_name": user.first_name if user else None,
-        "last_name": user.last_name if user else None,
-        "is_superuser": user.is_superuser if user else False,
-        "has_account": user is not None,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "is_superuser": user.is_superuser,
+        "has_account": True,
         "logout_url": f"https://{CF_ACCESS_TEAM_DOMAIN}/cdn-cgi/access/logout",
     }
 
