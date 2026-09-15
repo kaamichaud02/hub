@@ -14,10 +14,24 @@ window.TimesheetsUI = (() => {
 
   function render() {
     if (!stRoot) return;
-    if (stView === "weeks") return renderWeeks();
-    if (stView === "detail") return renderDetail(stCurrentId);
-    if (stView === "weekly-summary") return renderWeeklySummary();
-    if (stView === "admin") return renderAdmin();
+    let p;
+    try {
+      if (stView === "weeks") p = renderWeeks();
+      else if (stView === "detail") p = renderDetail(stCurrentId);
+      else if (stView === "weekly-summary") p = renderWeeklySummary();
+      else if (stView === "admin") p = renderAdmin();
+    } catch (err) {
+      showError(err);
+      return;
+    }
+    if (p && typeof p.catch === "function") p.catch(showError);
+  }
+
+  function showError(err) {
+    console.error("TimesheetsUI:", err);
+    if (stRoot) {
+      stRoot.innerHTML = `<div class="empty-hint">Erreur d'affichage : ${escapeHtml(String((err && err.message) || err))}</div>`;
+    }
   }
 
   function goTo(view, id = null) {
