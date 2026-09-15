@@ -71,9 +71,12 @@ def create_recipe(
     session: Session = Depends(get_session),
 ):
     data = payload.model_dump()
-    if data.get("ingredients"):
-        lines = [l for l in data["ingredients"].split("\n") if l.strip()]
-        data["ingredients"] = "\n".join(recipes_ai.normalize_units(lines))
+    ing_lines = [l for l in data.get("ingredients", "").split("\n") if l.strip()]
+    step_lines = [l for l in data.get("steps", "").split("\n") if l.strip()]
+    if ing_lines or step_lines:
+        polished_ing, polished_steps = recipes_ai.polish_recipe_text(ing_lines, step_lines)
+        data["ingredients"] = "\n".join(polished_ing)
+        data["steps"] = "\n".join(polished_steps)
 
     recipe = Recipe(**data, added_by_email=user.email)
     session.add(recipe)
@@ -219,9 +222,15 @@ def update_recipe(
             tags=recipe.tags, edited_by_email=user.email,
         ))
 
-    if "ingredients" in updates and updates["ingredients"]:
-        lines = [l for l in updates["ingredients"].split("\n") if l.strip()]
-        updates["ingredients"] = "\n".join(recipes_ai.normalize_units(lines))
+    if "ingredients" in updates or "steps" in updates:
+        ing_lines = [l for l in (updates.get("ingredients") or "").split("\n") if l.strip()] if "ingredients" in updates else []
+        step_lines = [l for l in (updates.get("steps") or "").split("\n") if l.strip()] if "steps" in updates else []
+        if ing_lines or step_lines:
+            polished_ing, polished_steps = recipes_ai.polish_recipe_text(ing_lines, step_lines)
+            if "ingredients" in updates:
+                updates["ingredients"] = "\n".join(polished_ing)
+            if "steps" in updates:
+                updates["steps"] = "\n".join(polished_steps)
 
     for field, value in updates.items():
         setattr(recipe, field, value)

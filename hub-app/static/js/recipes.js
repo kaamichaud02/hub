@@ -329,6 +329,7 @@ window.RecipesUI = (() => {
       <div class="st-form-row">
         <label style="flex:1">Étapes (une par ligne) <textarea id="fSteps" rows="8">${escapeHtml(r ? r.steps : "")}</textarea></label>
       </div>
+      <p style="color:var(--muted);font-size:0.78rem;margin:0 0 12px;">✨ L'IA corrige l'orthographe/formatage et convertit les unités impériales en métrique (impérial gardé entre parenthèses) automatiquement à l'enregistrement.</p>
       <button class="primary-btn" id="fSaveBtn">Enregistrer</button>
     `;
 

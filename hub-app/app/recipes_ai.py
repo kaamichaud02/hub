@@ -1,14 +1,15 @@
 """Extraction d'une recette structurée à partir du contenu brut d'une page
 web (texte visible, ou JSON-LD schema.org/Recipe si l'extension l'a trouvé —
-voir extension/background.js) via l'API Claude. Contient aussi la conversion
-impérial -> métrique des ingrédients saisis manuellement.
+voir extension/background.js) via l'API Claude. Contient aussi la correction/
+formatage + conversion impérial -> métrique des recettes saisies manuellement.
 
 Nécessite ANTHROPIC_API_KEY dans l'environnement. Voir le skill claude-api du
 repo pour les conventions SDK (modèle par défaut claude-opus-5, sorties
 structurées via client.messages.parse)."""
+import json
 import anthropic
 
-from .recipes_schemas import ExtractedRecipe, NormalizedIngredients
+from .recipes_schemas import ExtractedRecipe, PolishedRecipeText
 
 _client = None
 
@@ -51,10 +52,15 @@ SYSTEM_PROMPT = (
     "correspondant vide/null plutôt que d'inventer.\n\n" + UNITS_INSTRUCTION
 )
 
-NORMALIZE_SYSTEM_PROMPT = (
-    "On te donne une liste d'ingrédients de recette, un par ligne, saisis "
-    "manuellement. Renvoie exactement la même liste, dans le même ordre, "
-    "sans rien ajouter ni retirer, en appliquant uniquement la règle "
+POLISH_SYSTEM_PROMPT = (
+    "On te donne les ingrédients et les étapes d'une recette de cuisine "
+    "saisis manuellement (deux listes, ingredients et steps). Renvoie les "
+    "deux listes, dans le même ordre, avec exactement le même nombre "
+    "d'éléments que reçu, en corrigeant seulement l'orthographe et la "
+    "grammaire et en uniformisant le formatage (capitalisation cohérente, "
+    "pas de ponctuation superflue en fin de ligne) — sans changer le sens, "
+    "sans ajouter ni retirer d'informations, sans fusionner ou diviser des "
+    "éléments. Pour les ingrédients uniquement, applique aussi la règle "
     "suivante :\n\n" + UNITS_INSTRUCTION
 )
 
@@ -84,26 +90,31 @@ def extract_recipe(content: str, source_url: str | None, title_hint: str | None 
     return response.parsed_output
 
 
-def normalize_units(ingredient_lines: list[str]) -> list[str]:
-    """Convertit les unités impériales en métrique (impérial gardé entre
-    parenthèses) dans une liste d'ingrédients saisis manuellement. Renvoie la
-    liste telle quelle si vide, ou si l'appel Claude échoue (on ne bloque pas
-    la sauvegarde d'une recette pour un souci de conversion cosmétique)."""
-    if not ingredient_lines:
-        return ingredient_lines
+def polish_recipe_text(ingredient_lines: list[str], step_lines: list[str]) -> tuple[list[str], list[str]]:
+    """Corrige l'orthographe/formatage des ingrédients et étapes saisis
+    manuellement, et convertit les unités impériales en métrique sur les
+    ingrédients (impérial gardé entre parenthèses). Renvoie les listes
+    telles quelles si les deux sont vides, ou si l'appel Claude échoue ou
+    renvoie un nombre d'éléments différent (on ne bloque pas la sauvegarde
+    d'une recette pour un souci de correction cosmétique)."""
+    if not ingredient_lines and not step_lines:
+        return ingredient_lines, step_lines
+
+    payload = json.dumps({"ingredients": ingredient_lines, "steps": step_lines}, ensure_ascii=False)
 
     try:
         response = _get_client().messages.parse(
             model="claude-opus-5",
-            max_tokens=2048,
-            system=NORMALIZE_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": "\n".join(ingredient_lines)}],
-            output_format=NormalizedIngredients,
+            max_tokens=4096,
+            system=POLISH_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": payload}],
+            output_format=PolishedRecipeText,
         )
     except anthropic.APIError:
-        return ingredient_lines
+        return ingredient_lines, step_lines
 
-    if response.parsed_output is None or len(response.parsed_output.ingredients) != len(ingredient_lines):
-        return ingredient_lines
+    out = response.parsed_output
+    if out is None or len(out.ingredients) != len(ingredient_lines) or len(out.steps) != len(step_lines):
+        return ingredient_lines, step_lines
 
-    return response.parsed_output.ingredients
+    return out.ingredients, out.steps

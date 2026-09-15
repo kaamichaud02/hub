@@ -48,7 +48,8 @@ class ExtractedRecipe(BaseModel):
     tags: List[str] = []
 
 
-class NormalizedIngredients(BaseModel):
-    """Schéma de sortie pour la conversion impérial -> métrique d'une liste
-    d'ingrédients saisis manuellement."""
+class PolishedRecipeText(BaseModel):
+    """Schéma de sortie pour la correction/formatage + conversion d'unités
+    des ingrédients et étapes saisis manuellement."""
     ingredients: List[str]
+    steps: List[str]
