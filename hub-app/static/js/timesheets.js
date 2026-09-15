@@ -89,15 +89,18 @@ window.TimesheetsUI = (() => {
       return;
     }
 
-    listEl.innerHTML = data.weeks.map((week) => `
+    listEl.innerHTML = data.weeks.map((week) => {
+      const isCurrent = week.monday === data.current_monday;
+      return `
       <div class="week-card">
         <div class="week-card-header">
+          <span class="week-toggle">${isCurrent ? "▾" : "▸"}</span>
           <span class="week-range">Semaine du ${fmtDate(week.monday)} au ${fmtDate(week.sunday)}</span>
           <span class="week-total">${fmtHM(week.total_hours, week.total_minutes)}</span>
           <a class="ghost-btn" href="/api/timesheets/report/pdf/${week.monday}">PDF</a>
           <a class="ghost-btn" href="/api/timesheets/report/word/${week.monday}">Word</a>
         </div>
-        <div class="week-card-body">
+        <div class="week-card-body" ${isCurrent ? "" : "hidden"}>
           ${week.timesheets.map((ts) => `
             <div class="timesheet-row" data-id="${ts.id}">
               <span class="ts-date">${fmtDate(ts.date)}</span>
@@ -107,10 +110,22 @@ window.TimesheetsUI = (() => {
           `).join("")}
         </div>
       </div>
-    `).join("");
+    `;
+    }).join("");
 
     listEl.querySelectorAll(".timesheet-row").forEach((row) => {
       row.addEventListener("click", () => goTo("detail", Number(row.dataset.id)));
+    });
+
+    listEl.querySelectorAll(".week-card").forEach((card) => {
+      const toggle = card.querySelector(".week-toggle");
+      const body = card.querySelector(".week-card-body");
+      const toggleBody = () => {
+        body.hidden = !body.hidden;
+        toggle.textContent = body.hidden ? "▸" : "▾";
+      };
+      toggle.addEventListener("click", toggleBody);
+      card.querySelector(".week-range").addEventListener("click", toggleBody);
     });
   }
 

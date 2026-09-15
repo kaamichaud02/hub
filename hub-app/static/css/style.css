@@ -53,6 +53,14 @@ html, body {
   letter-spacing: 0.2px;
 }
 
+.app-version {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
 .ghost-btn {
   background: var(--panel-2);
   border: 1px solid var(--border);
@@ -176,7 +184,20 @@ html, body {
   background: var(--panel-2);
 }
 
-.week-card-header .week-range { font-weight: 600; font-size: 0.9rem; flex: 1; }
+.week-card-header .week-toggle {
+  color: var(--muted);
+  font-size: 0.7rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.week-card-header .week-range {
+  font-weight: 600;
+  font-size: 0.9rem;
+  flex: 1;
+  cursor: pointer;
+  user-select: none;
+}
 
 .week-card-header .week-total {
   font-family: var(--mono);

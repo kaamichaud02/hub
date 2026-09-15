@@ -6,8 +6,20 @@ const modalRoot = document.getElementById("modalRoot");
 const suiviTempsPlaceholder = document.getElementById("suiviTempsPlaceholder");
 const sidebarFooterText = document.getElementById("sidebarFooterText");
 const sidebarSettingsBtn = document.getElementById("sidebarSettingsBtn");
+const appVersionEl = document.getElementById("appVersion");
 
 let currentBoardId = null;
+
+// ---------- Version déployée (pour vérifier rapidement si le cache sert du vieux code) ----------
+
+async function loadVersion() {
+  try {
+    const { version } = await api("/api/version");
+    appVersionEl.textContent = `v${version}`;
+  } catch {
+    appVersionEl.textContent = "";
+  }
+}
 
 // ---------- Utilisateur connecté (Cloudflare Access) ----------
 
@@ -333,3 +345,4 @@ function escapeHtml(str) {
 
 setActiveSection("kanban");
 loadWhoami();
+loadVersion();

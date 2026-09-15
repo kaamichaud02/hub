@@ -1,3 +1,4 @@
+import os
 from typing import List
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
@@ -76,6 +77,15 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
 def serve_index():
     return FileResponse("static/index.html")
+
+
+@app.get("/api/version")
+def version():
+    # GIT_SHA vient du build-arg passé par le CI (voir Dockerfile et
+    # .github/workflows/hub-docker.yml) — utile pour vérifier rapidement
+    # quelle version tourne réellement (les caches navigateur/Cloudflare ont
+    # causé plusieurs confusions "ça a l'air pas à jour" pendant les tests).
+    return {"version": os.environ.get("GIT_SHA", "dev")[:7]}
 
 
 @app.get("/api/whoami")
