@@ -73,6 +73,30 @@ window.RecipesUI = (() => {
       : "";
   }
 
+  function imageSrc(r) {
+    // Image téléversée (stockée en base) prioritaire sur un lien externe.
+    if (r.has_uploaded_image) return `/api/recipes/${r.id}/image`;
+    return r.image_url || null;
+  }
+
+  async function uploadRecipeImage(id, file) {
+    // multipart, pas de JSON — ne peut pas réutiliser api() (Content-Type
+    // JSON forcé) ; le navigateur pose lui-même le boundary multipart tant
+    // qu'on ne fixe pas Content-Type manuellement.
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`/api/recipes/${id}/image`, { method: "POST", body: formData });
+    if (!res.ok) {
+      let detail = `${res.status}`;
+      try {
+        const body = await res.json();
+        if (body && body.detail) detail = body.detail;
+      } catch {}
+      throw new Error(detail);
+    }
+    return res.json();
+  }
+
   // ---------- Vue liste ----------
 
   async function renderList() {
@@ -111,7 +135,7 @@ window.RecipesUI = (() => {
     gridEl.className = "recipe-grid";
     gridEl.innerHTML = recipes.map((r) => `
       <div class="recipe-card" data-id="${r.id}">
-        ${r.image_url ? `<img class="recipe-card-img" src="${escapeAttr(r.image_url)}" alt="" />` : `<div class="recipe-card-img recipe-card-img-empty">🍲</div>`}
+        ${imageSrc(r) ? `<img class="recipe-card-img" src="${escapeAttr(imageSrc(r))}" alt="" />` : `<div class="recipe-card-img recipe-card-img-empty">🍲</div>`}
         <div class="recipe-card-body">
           <div class="recipe-card-title">${escapeHtml(r.title)}</div>
           <div class="recipe-card-meta">${recipeMeta(r)}</div>
@@ -155,7 +179,13 @@ window.RecipesUI = (() => {
       <h3>${escapeHtml(r.title)}</h3>
       <div class="recipe-detail-meta">${recipeMeta(r)}</div>
       ${tagChips(r.tags)}
-      ${r.image_url ? `<img class="recipe-detail-img" src="${escapeAttr(r.image_url)}" alt="" />` : ""}
+      ${imageSrc(r) ? `<img class="recipe-detail-img" src="${escapeAttr(imageSrc(r))}" alt="" />` : ""}
+      <div class="st-form-row" style="align-items:center;">
+        <input type="file" id="rImageFile" accept="image/*" />
+        <button class="ghost-btn" id="rImageUploadBtn">Téléverser une image</button>
+        ${r.has_uploaded_image ? `<button class="ghost-btn" id="rImageDeleteBtn">Retirer l'image</button>` : ""}
+        <span id="rImageStatus" style="color:var(--muted);font-size:0.8rem;"></span>
+      </div>
       ${r.source_url ? `<p><a href="${escapeAttr(r.source_url)}" target="_blank" rel="noopener">Source</a></p>` : ""}
       <h4>Ingrédients</h4>
       <ul>${ingredients.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>
@@ -186,6 +216,23 @@ window.RecipesUI = (() => {
 
     bodyEl.querySelector("#rEditBtn").addEventListener("click", () => goTo("form", id));
     bodyEl.querySelector("#rHistoryBtn").addEventListener("click", () => goTo("revisions", id));
+    bodyEl.querySelector("#rImageUploadBtn").addEventListener("click", async () => {
+      const fileInput = bodyEl.querySelector("#rImageFile");
+      const statusEl = bodyEl.querySelector("#rImageStatus");
+      const file = fileInput.files[0];
+      if (!file) { statusEl.textContent = "Choisis d'abord un fichier."; return; }
+      statusEl.textContent = "Envoi…";
+      try {
+        await uploadRecipeImage(id, file);
+        goTo("detail", id);
+      } catch (e) {
+        statusEl.textContent = `Erreur : ${e.message}`;
+      }
+    });
+    bodyEl.querySelector("#rImageDeleteBtn")?.addEventListener("click", async () => {
+      await api(`/api/recipes/${id}/image`, { method: "DELETE" });
+      goTo("detail", id);
+    });
     bodyEl.querySelector("#rDeleteBtn").addEventListener("click", async () => {
       if (!confirm(`Supprimer la recette "${r.title}" ?`)) return;
       await api(`/api/recipes/${id}`, { method: "DELETE" });

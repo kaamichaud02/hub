@@ -37,6 +37,8 @@ def _ensure_columns():
     chaque démarrage."""
     statements = [
         f"ALTER TABLE {Recipe.__tablename__} ADD COLUMN IF NOT EXISTS tags TEXT NOT NULL DEFAULT ''",
+        f"ALTER TABLE {Recipe.__tablename__} ADD COLUMN IF NOT EXISTS image_data BYTEA",
+        f"ALTER TABLE {Recipe.__tablename__} ADD COLUMN IF NOT EXISTS image_content_type TEXT",
     ]
     with engine.begin() as conn:
         for stmt in statements:

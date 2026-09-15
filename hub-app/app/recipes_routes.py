@@ -1,5 +1,5 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Response
 from sqlmodel import Session, select
 
 from .database import get_session
@@ -11,10 +11,13 @@ from . import recipes_ai
 
 router = APIRouter(prefix="/api/recipes", tags=["recipes"])
 
+MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 Mo
+
 
 def _serialize_recipe_summary(r: Recipe) -> dict:
     return {
         "id": r.id, "title": r.title, "image_url": r.image_url,
+        "has_uploaded_image": r.image_data is not None,
         "prep_minutes": r.prep_minutes, "cook_minutes": r.cook_minutes,
         "servings": r.servings, "tags": r.tags,
     }
@@ -25,6 +28,7 @@ def _serialize_recipe_detail(r: Recipe, comments: list[RecipeComment]) -> dict:
         "id": r.id, "title": r.title, "ingredients": r.ingredients, "steps": r.steps,
         "prep_minutes": r.prep_minutes, "cook_minutes": r.cook_minutes,
         "servings": r.servings, "source_url": r.source_url, "image_url": r.image_url,
+        "has_uploaded_image": r.image_data is not None,
         "tags": r.tags, "added_by_email": r.added_by_email,
         "comments": [
             {"id": c.id, "author_email": c.author_email, "author_name": c.author_name,
@@ -125,6 +129,59 @@ def get_recipe(
         select(RecipeComment).where(RecipeComment.recipe_id == recipe_id).order_by(RecipeComment.created_at)
     ).all()
     return _serialize_recipe_detail(recipe, comments)
+
+
+@router.get("/{recipe_id}/image")
+def get_recipe_image(
+    recipe_id: int,
+    _: CurrentUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    recipe = _get_recipe_or_404(session, recipe_id)
+    if not recipe.image_data:
+        raise HTTPException(404, "Aucune image téléversée pour cette recette")
+    return Response(content=recipe.image_data, media_type=recipe.image_content_type or "application/octet-stream")
+
+
+@router.post("/{recipe_id}/image")
+async def upload_recipe_image(
+    recipe_id: int,
+    _: CurrentUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
+    file: UploadFile = File(...),
+):
+    recipe = _get_recipe_or_404(session, recipe_id)
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(422, "Le fichier doit être une image")
+
+    data = await file.read()
+    if len(data) > MAX_IMAGE_SIZE:
+        raise HTTPException(422, f"Image trop volumineuse (max {MAX_IMAGE_SIZE // (1024 * 1024)} Mo)")
+
+    recipe.image_data = data
+    recipe.image_content_type = file.content_type
+    recipe.updated_at = datetime.utcnow()
+    session.add(recipe)
+    session.commit()
+    session.refresh(recipe)
+    comments = session.exec(
+        select(RecipeComment).where(RecipeComment.recipe_id == recipe_id).order_by(RecipeComment.created_at)
+    ).all()
+    return _serialize_recipe_detail(recipe, comments)
+
+
+@router.delete("/{recipe_id}/image")
+def delete_recipe_image(
+    recipe_id: int,
+    _: CurrentUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    recipe = _get_recipe_or_404(session, recipe_id)
+    recipe.image_data = None
+    recipe.image_content_type = None
+    session.add(recipe)
+    session.commit()
+    return {"ok": True}
 
 
 @router.get("/{recipe_id}/revisions")

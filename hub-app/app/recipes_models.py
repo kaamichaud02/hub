@@ -14,7 +14,9 @@ class Recipe(SQLModel, table=True):
     cook_minutes: Optional[int] = None
     servings: Optional[int] = None
     source_url: Optional[str] = None
-    image_url: Optional[str] = None
+    image_url: Optional[str] = None  # image externe (lien) — utilisée si aucune image téléversée
+    image_data: Optional[bytes] = None  # image téléversée, stockée directement en base (BYTEA)
+    image_content_type: Optional[str] = None
     tags: str = ""  # bloc texte, tags séparés par virgule (même convention que Task.tags)
     added_by_email: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
