@@ -3,7 +3,7 @@ version: "3.8"
 services:
   hub:
     build: ./hub-app
-    image: hub-kaa-zone:latest
+    image: ghcr.io/kaamichaud02/hub:dev
     container_name: hub-kaa-zone
     restart: unless-stopped
     environment:
@@ -18,7 +18,7 @@ services:
   suivi_temps:
     # Image construite par .github/workflows/suivi_temps-docker.yml (CI),
     # pas de build local ici — même pratique qu'avant la fusion dans le monorepo.
-    image: ghcr.io/kaamichaud02/suivi_temps:latest
+    image: ghcr.io/kaamichaud02/suivi_temps:dev
     container_name: suivi-temps
     restart: unless-stopped
     environment:

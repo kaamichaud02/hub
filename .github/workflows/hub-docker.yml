@@ -1,11 +1,11 @@
-name: Build and push Docker image
+name: Build and push hub Docker image
 
 on:
   push:
     branches: [ master, main, dev ]
     paths:
-      - 'suivi_temps/**'
-      - '.github/workflows/suivi_temps-docker.yml'
+      - 'hub-app/**'
+      - '.github/workflows/hub-docker.yml'
 
 jobs:
   build:
@@ -37,10 +37,10 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: ./suivi_temps
+          context: ./hub-app
           push: true
           build-args: |
             GIT_SHA=${{ github.sha }}
           tags: |
-            ghcr.io/kaamichaud02/suivi_temps:${{ steps.vars.outputs.tag }}
-            ghcr.io/kaamichaud02/suivi_temps:${{ github.sha }}
+            ghcr.io/kaamichaud02/hub:${{ steps.vars.outputs.tag }}
+            ghcr.io/kaamichaud02/hub:${{ github.sha }}
