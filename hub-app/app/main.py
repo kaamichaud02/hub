@@ -2,7 +2,7 @@ from typing import List
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func
 
 from .database import init_db, get_session
 from .models import Board, Column, Task
@@ -11,8 +11,15 @@ from .schemas import (
     ColumnCreate, ColumnReorder,
     TaskCreate, TaskUpdate, TaskMove,
 )
+from .timesheets_db import get_session_st
+from .timesheets_models import AuthUser
+from .timesheets_auth import get_verified_email, extract_token, CF_ACCESS_TEAM_DOMAIN
+from .timesheets_routes import router as timesheets_router
+from .admin_routes import router as admin_router
 
 app = FastAPI(title="Hub - kaa.zone")
+app.include_router(timesheets_router)
+app.include_router(admin_router)
 
 
 @app.on_event("startup")
@@ -71,12 +78,27 @@ def serve_index():
 
 
 @app.get("/api/whoami")
-def whoami(request: Request):
-    # Injecté par Cloudflare Access en amont (Zero Trust). Pas de validation du
-    # JWT ici — voir suivi_temps/timesheets/cf_access.py pour la logique de
-    # validation complète, à porter côté hub quand son auth sera construite.
-    email = request.headers.get("Cf-Access-Authenticated-User-Email")
-    return {"email": email}
+def whoami(request: Request, session_st: Session = Depends(get_session_st)):
+    # Vérifie réellement la signature du JWT Cloudflare Access (JWKS) au lieu
+    # de faire confiance à un header — voir timesheets_auth.py. N'exige pas de
+    # compte auth_user : un utilisateur kanban-only doit pouvoir passer ici,
+    # seules les routes /api/timesheets et /api/admin exigent un compte.
+    email = get_verified_email(extract_token(request))
+    if not email:
+        return {
+            "email": None, "first_name": None, "last_name": None,
+            "is_superuser": False, "logout_url": None,
+        }
+    user = session_st.exec(
+        select(AuthUser).where(func.lower(AuthUser.email) == email.lower())
+    ).first()
+    return {
+        "email": email,
+        "first_name": user.first_name if user else None,
+        "last_name": user.last_name if user else None,
+        "is_superuser": user.is_superuser if user else False,
+        "logout_url": f"https://{CF_ACCESS_TEAM_DOMAIN}/cdn-cgi/access/logout",
+    }
 
 
 # ---------- Boards ----------

@@ -12,9 +12,11 @@ let currentBoardId = null;
 
 async function loadWhoami() {
   try {
-    const { email } = await api("/api/whoami");
-    sidebarFooter.textContent = email || "Non authentifié";
+    const data = await api("/api/whoami");
+    window.currentUser = data;
+    sidebarFooter.textContent = data.email || "Non authentifié";
   } catch {
+    window.currentUser = { email: null, is_superuser: false, logout_url: null };
     sidebarFooter.textContent = "Non authentifié";
   }
 }
@@ -40,6 +42,7 @@ function setActiveSection(section) {
     loadBoardTabs(currentBoardId);
   } else {
     pageTitle.textContent = "Suivi de temps";
+    window.TimesheetsUI.mount(suiviTempsPlaceholder);
   }
 }
 

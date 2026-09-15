@@ -2,3 +2,8 @@ fastapi==0.115.0
 uvicorn[standard]==0.30.6
 sqlmodel==0.0.22
 psycopg2-binary==2.9.9
+PyJWT==2.9.0
+cryptography==43.0.1
+reportlab==4.2.5
+python-docx==1.1.2
+requests==2.32.3
