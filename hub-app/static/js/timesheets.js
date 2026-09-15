@@ -214,7 +214,7 @@ window.TimesheetsUI = (() => {
         }
         goTo("weeks");
       } catch (e) {
-        alert("Erreur lors de l'enregistrement — vérifie qu'il n'existe pas déjà une feuille de temps pour cette date.");
+        alert(`Erreur lors de l'enregistrement : ${e.message}`);
       }
     });
 
@@ -337,8 +337,8 @@ window.TimesheetsUI = (() => {
         });
         closeModal();
         loadUsersTable();
-      } catch {
-        alert("Erreur — un compte existe peut-être déjà avec cet email.");
+      } catch (e) {
+        alert(`Erreur : ${e.message}`);
       }
     };
   }
