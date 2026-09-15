@@ -1,136 +1,157 @@
 # hub — Contexte du monorepo
 
-Repo unique : https://github.com/kaamichaud02/hub
+Repo : https://github.com/kaamichaud02/hub
 
-Ce repo contient **deux applications séparées** (chacune son conteneur
-Docker), orchestrées ensemble par le `docker-compose.yml` à la racine :
+**Une seule application** déployée (FastAPI, `hub-app/`). L'ancienne app
+Django `suivi_temps/` a été **fusionnée dans hub-app** comme section —
+son dossier reste dans le repo pour référence, mais son code n'est plus
+déployé ni exécuté depuis ici. Sa base Postgres existante est toujours
+utilisée (lue/écrite directement par hub-app).
 
 ```
 hub/
-├── docker-compose.yml       # orchestre les deux services ci-dessous
-├── .env.example
+├── docker-compose.yml            # un seul service : hub
+├── .env.example                  # liste toutes les variables requises
 ├── .github/workflows/
-│   └── suivi_temps-docker.yml   # CI : build+push l'image suivi_temps sur changement dans suivi_temps/
-├── hub-app/                  # App 1 : le hub kanban (FastAPI)
+│   └── hub-docker.yml            # CI : build+push ghcr.io/kaamichaud02/hub
+│                                  #   tag :dev sur push vers dev, :latest sur master
+├── extension/                    # extension navigateur (capture de recette)
+│   ├── manifest.json             # Manifest V3, Chrome/Edge
+│   ├── background.js             # capture page active + POST au hub
+│   └── README.md
+├── hub-app/
 │   ├── app/
-│   │   ├── main.py            # routes API (boards, columns, tasks)
-│   │   ├── models.py          # SQLModel : Board, Column, Task
-│   │   ├── database.py        # connexion Postgres externe
-│   │   └── schemas.py
+│   │   ├── main.py                    # app FastAPI, /api/whoami, /api/version
+│   │   ├── database.py                # engine HUB_DB + migrations idempotentes
+│   │   ├── models.py                  # Board, Column, Task (Kanban)
+│   │   ├── schemas.py
+│   │   ├── timesheets_db.py           # 2e engine, base ST_DATABASE (suivi_temps)
+│   │   ├── timesheets_models.py       # AuthUser, TimesheetST, TimeEntryST
+│   │   │                              #   (mappent les tables Django EXISTANTES)
+│   │   ├── timesheets_auth.py         # JWT Cloudflare Access + auto-provisioning
+│   │   ├── timesheets_services.py     # calcul de durée (porté de suivi_temps)
+│   │   ├── timesheets_routes.py       # /api/timesheets/*
+│   │   ├── timesheets_reports/        # génération PDF/Word (portée de suivi_temps)
+│   │   ├── admin_routes.py            # /api/admin/users (gestion comptes, superuser)
+│   │   ├── recipes_models.py          # Recipe, RecipeComment, RecipeRevision
+│   │   ├── recipes_ai.py              # appels Claude (extraction, correction/conversion)
+│   │   ├── recipes_routes.py          # /api/recipes/*
+│   │   └── recipes_schemas.py
 │   ├── static/
 │   │   ├── index.html
-│   │   ├── css/style.css      # thème sombre
-│   │   └── js/app.js          # SortableJS, drag & drop tuiles + kanban
+│   │   ├── css/style.css              # thème sombre, un seul fichier
+│   │   └── js/
+│   │       ├── app.js                 # shell : sidebar, sections, whoami, version
+│   │       ├── timesheets.js          # section "Suivi de temps"
+│   │       └── recipes.js             # section "Recette"
+│   ├── tests/                         # pytest (logique de durée, dépendance auth)
 │   ├── Dockerfile
 │   └── requirements.txt
-└── suivi_temps/               # App 2 : saisie de temps (Django)
-    ├── timesheet_project/     # settings, urls racine
-    ├── timesheets/
-    │   ├── models.py           # Timesheet, TimeEntry
-    │   ├── services.py         # calcul de durée centralisé
-    │   ├── cf_access.py        # validation JWT Cloudflare Access
-    │   ├── auth_backends.py    # CloudflareAccessBackend
-    │   ├── middleware.py       # CloudflareAccessMiddleware
-    │   ├── reports/            # génération PDF (pdf.py) et Word (docx.py)
-    │   ├── views.py
-    │   ├── forms.py
-    │   ├── tests.py            # 11 tests, tous passent
-    │   └── templates/
-    ├── Dockerfile
-    └── requirements.txt
+└── suivi_temps/                  # Django, référence seulement — non déployé
 ```
 
-## App 1 : hub-app (kanban)
+## Architecture du hub
 
-**Objectif** : outil kanban perso pour suivre l'avancement des projets de
-Jean-François (suivi_temps, Factorio, PRTG, etc.). Chaque projet = une
-tuile sur la page d'accueil ; cliquer ouvre un tableau kanban (colonnes +
-cartes en drag & drop).
+**Sidebar avec 3 sections** (SPA JSON+JS vanilla, pas de framework, pas de
+build step) :
+1. **Kanban** — tuiles de projets → colonnes/tâches drag & drop (`Board`/
+   `Column`/`Task`, base `HUB_DB`)
+2. **Suivi de temps** — saisie d'heures, résumé hebdomadaire, export PDF/
+   Word (porté de l'ancien Django, base `ST_DATABASE` = l'ancienne base
+   suivi_temps, tables `auth_user`/`timesheets_timesheet`/
+   `timesheets_timeentry` **existantes, jamais recréées**)
+3. **Recette** — livre de recettes global avec commentaires, tags,
+   recherche, historique des modifications ; extraction IA (Claude) à
+   partir de texte collé ou de la capture par l'extension navigateur ;
+   images stockées en base (BYTEA)
 
-**Stack** : FastAPI + SQLModel, PostgreSQL EXTERNE existant (pas de
-conteneur dédié — connexion via `HUB_DB_*`), frontend HTML/CSS/JS vanilla
-+ SortableJS (CDN), pas de framework JS.
+**Deux bases Postgres séparées** (deux engines SQLAlchemy dans le même
+process) :
+- `HUB_DB_*` → `Board`/`Column`/`Task`/`Recipe`/`RecipeComment`/
+  `RecipeRevision` — tables gérées par hub-app (`database.py::init_db()`)
+- `ST_DATABASE_*` → tables Django existantes de l'ancien suivi_temps,
+  **jamais de DDL dessus**, lecture/écriture de données seulement
 
-**Modèle de données** : `Board` (projet : nom, icône, couleur,
-description, position) → `Column` (colonne kanban) → `Task` (tâche :
-titre, description, tags, position).
+## Authentification — Cloudflare Access
 
-**État actuel** : code complet généré, un board "suivi_temps" pré-rempli
-au démarrage (`seed_default_data` dans `main.py`) — mais **ces tâches de
-seed datent d'avant qu'on connaisse le vrai contenu de suivi_temps et
-sont probablement à revoir** une fois la section suivi_temps du hub
-construite pour de vrai.
+Une seule application Cloudflare Access protège tout le hub (un seul
+domaine). `timesheets_auth.py` valide le JWT via JWKS
+(`CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD`) et résout l'email vers un
+compte `auth_user`.
 
-**Pas encore fait** : le vrai kanban (colonnes/tâches réelles) pour la
-section "suivi_temps" n'a pas été construit — priorité actuelle, une
-fois l'authentification unifiée en place (voir plus bas).
+**Auto-provisioning** : la policy Cloudflare Access est la seule
+barrière de sécurité (qui peut même atteindre le hub). Un email qui
+passe cette policy obtient donc son compte automatiquement à la
+première requête (`get_or_create_user`), toujours **sans droits admin**
+(`is_superuser=False`) et sans nom — la personne configure son nom via
+l'engrenage dans la sidebar (PATCH `/api/whoami`). Promouvoir quelqu'un
+admin reste un acte manuel (section Administration, superuser only).
 
-## App 2 : suivi_temps (saisie de temps)
+## Déploiement — Arcane + branches Git
 
-**Objectif** : chaque utilisateur entre ses heures jour par jour (heure
-début/fin), voit un résumé hebdomadaire, exporte des rapports PDF/Word.
+- **`dev`** → `hubtest.kaa.zone`, image `ghcr.io/kaamichaud02/hub:dev`
+- **`master`** → prod (domaine pas encore configuré), image
+  `ghcr.io/kaamichaud02/hub:latest`
+- CI (`hub-docker.yml`) build+push sur push vers l'une ou l'autre branche,
+  tag selon la branche
+- Déploiement via Arcane (sync Git du repo + `docker-compose.yml`),
+  redéploiement manuel après un push (pas toujours automatique — parfois
+  il faut forcer "Mettre à jour les conteneurs")
+- **Workflow de fusion** : dev pour tester, puis merge manuel vers
+  master (`git merge dev --no-ff`) — vérifier après merge que
+  `docker-compose.yml` garde bien `image: ...:latest` (pas `:dev`), le
+  merge peut avoir besoin d'un arbitrage sur cette ligne
 
-**Comptes existants à préserver** (mapping par email exact, tables
-`Timesheet`/`TimeEntry` non touchées par la refonte) :
-- `kaamichaud02` (Jean-François, superuser)
-- `Marie-Claude` (Charest)
-- `amelie.cote@gmail.com` (Amélie Cote)
+## Variables d'environnement (voir `.env.example`)
 
-**Refonte structurelle effectuée** :
-- Logique de calcul de durée centralisée dans `services.py` (était
-  dupliquée dans models.py + 2 générateurs de rapport)
-- Bug corrigé : quart passant minuit en fin de mois plantait
-  (`end.replace(day=end.day + 1)` → `end + timedelta(days=1)`)
-- Génération PDF/Word séparée en `reports/pdf.py` et `reports/docx.py`,
-  données partagées via `reports/common.py`
-- 11 tests unitaires (calcul de durée + middleware d'auth), tous passent
+| Var | Usage |
+|---|---|
+| `HUB_DB_*` | base Kanban/Recette |
+| `CF_ACCESS_TEAM_DOMAIN` | domaine Zero Trust, partagé |
+| `CF_ACCESS_AUD` | AUD tag de l'app Cloudflare Access du hub (une seule maintenant, plus de AUD séparé pour suivi_temps) |
+| `ST_DATABASE_*` | base suivi_temps existante |
+| `ANTHROPIC_API_KEY` | extraction/correction IA (section Recette) |
 
-## Authentification unifiée — Cloudflare Access (en cours)
+**Important** : `docker-compose.yml` doit lister explicitement CHAQUE
+variable dans `environment:` du service `hub` — les oublier ici est une
+source d'erreurs déjà rencontrée (le code lit bien la variable via
+`os.getenv()`, mais si elle n'est pas dans `docker-compose.yml`, elle
+n'est jamais injectée dans le conteneur).
 
-**Décision architecturale** : le hub (`hub-app`) doit authentifier pour
-**tous les modules**, y compris suivi_temps. Approche retenue : chaque
-app valide elle-même le JWT Cloudflare Access (Entra ID SSO déjà en
-place sur kaa.zone) plutôt que de construire un serveur d'identité
-séparé — Cloudflare fournit déjà la SSO entre sous-domaines kaa.zone.
+## Pièges rencontrés (pour éviter de les refaire)
 
-**Déjà fait pour suivi_temps** :
-- Login/signup Django classique **retiré complètement**
-- `cf_access.py` valide le JWT via JWKS Cloudflare, extrait l'email
-- `auth_backends.py` (`CloudflareAccessBackend`) retrouve le `User`
-  Django par email exact, aucun mot de passe vérifié
-- `middleware.py` connecte automatiquement l'utilisateur à chaque
-  requête ; email inconnu → page "compte non trouvé" (403), pas de
-  création automatique — un admin crée le compte via `/admin/`
-- Déconnexion redirige vers l'URL de logout Cloudflare Access
+- **`SQLModel.metadata.create_all()` ne crée que les tables manquantes,
+  jamais les colonnes manquantes sur une table déjà déployée.** Ajouter
+  un champ à un modèle existant nécessite un `ALTER TABLE ... ADD COLUMN
+  IF NOT EXISTS` explicite dans `database.py::_ensure_columns()`.
+- **Piège Pydantic** : un champ nommé comme son type avec une valeur par
+  défaut (`date: Optional[date] = None`) fait que Pydantic résout le
+  type comme `NoneType` (la valeur par défaut de classe masque le type
+  importé). Importer les types avec un alias (`date as date_`) dans les
+  fichiers de schémas.
+- **Cloudflare intercepte les réponses 502/504** de l'origine et les
+  remplace par sa propre page d'erreur générique — utiliser 422/400/500
+  pour les erreurs applicatives, jamais 502/504.
+- **Cache Cloudflare (edge) ≠ cache navigateur** : un Ctrl+Shift+R ne
+  contourne pas le cache Cloudflare. Purger via Cloudflare > Caching >
+  Purge Cache si un changement de CSS/JS semble ne pas s'appliquer alors
+  que le déploiement est confirmé à jour (vérifier `v<sha>` sous "Hub"
+  dans la sidebar en premier).
+- **Arcane ne redéploie pas toujours automatiquement** après un push —
+  vérifier/forcer la resynchronisation + "Mettre à jour les conteneurs"
+  si le changement ne semble pas pris en compte.
 
-**Pas encore fait pour hub-app** : le hub (FastAPI) n'a **aucune**
-authentification pour l'instant — à faire avec la même logique (valider
-le JWT Cloudflare Access), probablement en adaptant `cf_access.py` pour
-FastAPI plutôt que Django.
+## Prochaines étapes
 
-**Variables d'environnement à renseigner** (Zero Trust dashboard, pas
-encore remplies) :
-- `CF_ACCESS_TEAM_DOMAIN` — partagé entre tous les modules (Zero Trust >
-  Settings > Custom Pages)
-- `ST_CF_ACCESS_AUD` — AUD tag spécifique à l'application suivi_temps
-  (Zero Trust > Access > Applications)
-- Le hub aura son propre AUD tag une fois son auth construite
-
-## État global / prochaines étapes (une chose à la fois)
-1. ✅ hub-app : structure + kanban de base (drag & drop tuiles et tâches)
-2. ✅ suivi_temps : refonte structurelle (services.py, reports/, tests)
-3. ✅ suivi_temps : authentification Cloudflare Access
-4. ⬜ Écrire tous les fichiers sur disque dans ce repo (fait par Claude
-   Code à partir de ce prompt)
-5. ⬜ Remplir `.env`, tester chaque app localement
-6. ⬜ Configurer les applications Cloudflare Access (AUD tags)
-7. ⬜ git init / commit / push vers kaamichaud02/hub
-8. ⬜ Authentification du hub lui-même (FastAPI) via Cloudflare Access
-9. ⬜ Construire le vrai kanban de la section "suivi_temps" dans le hub
-   (revoir les tâches de seed, actuellement obsolètes)
-10. ⬜ Déploiement Portainer sur OVH-BHS, exposition via Cloudflare Tunnel
-
-## Dépôt Git
-- Repo : https://github.com/kaamichaud02/hub
-- Pas encore initialisé localement — à faire : git init, remote origin,
-  commit initial, push
+1. ⬜ **Déploiement production** : nouveau projet Arcane pointant sur
+   `master`, nouvelle application Cloudflare Access pour le domaine de
+   prod (son propre AUD tag), `.env` avec les vraies valeurs de prod
+2. ⬜ Icônes personnalisées pour l'extension navigateur (utilise
+   l'icône générique du navigateur pour l'instant)
+3. ⬜ Port Firefox de l'extension (actuellement Chrome/Edge, Manifest V3)
+4. ⬜ Revoir/nettoyer le board Kanban "suivi_temps" pré-rempli au
+   démarrage (`seed_default_data` dans `main.py`) — ses tâches datent
+   d'avant la fusion et ne reflètent plus l'état réel du projet
+5. Idée en suspens : suppression éventuelle du dossier `suivi_temps/`
+   (Django) une fois la fusion validée en prod depuis un moment — le
+   garder pour l'instant comme référence/filet de sécurité
