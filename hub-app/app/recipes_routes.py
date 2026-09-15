@@ -75,7 +75,10 @@ def extract_recipe(
     try:
         extracted = recipes_ai.extract_recipe(payload.content, payload.source_url, payload.title_hint)
     except recipes_ai.RecipeExtractionError as e:
-        raise HTTPException(502, f"Extraction impossible : {e}")
+        # 422 plutôt que 502/504 : Cloudflare intercepte ces codes "origine
+        # injoignable" et les remplace par sa propre page d'erreur, ce qui
+        # masquerait le vrai message envoyé par le backend.
+        raise HTTPException(422, f"Extraction impossible : {e}")
 
     recipe = Recipe(
         title=extracted.title,
