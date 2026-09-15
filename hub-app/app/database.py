@@ -1,5 +1,6 @@
 import os
 from sqlmodel import SQLModel, Session, create_engine
+from sqlalchemy import text
 
 from .models import Board, Column, Task
 from .recipes_models import Recipe, RecipeComment, RecipeRevision
@@ -25,6 +26,21 @@ def init_db():
         Board.__table__, Column.__table__, Task.__table__,
         Recipe.__table__, RecipeComment.__table__, RecipeRevision.__table__,
     ])
+    _ensure_columns()
+
+
+def _ensure_columns():
+    """create_all() ne crée que les tables manquantes, jamais les colonnes
+    manquantes sur une table déjà existante — un champ ajouté à un modèle
+    après son premier déploiement (ex. Recipe.tags) doit être ajouté ici
+    explicitement. ADD COLUMN IF NOT EXISTS : idempotent, sûr à rejouer à
+    chaque démarrage."""
+    statements = [
+        f"ALTER TABLE {Recipe.__tablename__} ADD COLUMN IF NOT EXISTS tags TEXT NOT NULL DEFAULT ''",
+    ]
+    with engine.begin() as conn:
+        for stmt in statements:
+            conn.execute(text(stmt))
 
 
 def get_session():

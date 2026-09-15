@@ -81,8 +81,8 @@ window.RecipesUI = (() => {
 
     try {
       rAllRecipes = await api("/api/recipes");
-    } catch {
-      rRoot.querySelector("#rGrid").innerHTML = `<div class="empty-hint">Impossible de charger les recettes.</div>`;
+    } catch (e) {
+      rRoot.querySelector("#rGrid").innerHTML = `<div class="empty-hint">Impossible de charger les recettes : ${escapeHtml(e.message)}</div>`;
       return;
     }
     renderGrid();
