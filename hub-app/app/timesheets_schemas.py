@@ -42,3 +42,8 @@ class AdminUserCreate(BaseModel):
     last_name: str = ""
     username: Optional[str] = None
     is_superuser: bool = False
+
+
+class WhoamiUpdate(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None

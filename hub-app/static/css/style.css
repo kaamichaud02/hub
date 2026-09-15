@@ -109,13 +109,33 @@ html, body {
   margin-top: auto;
   padding: 12px 18px;
   border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-footer #sidebarFooterText {
   font-family: var(--mono);
   font-size: 0.72rem;
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 2px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.icon-btn:hover { color: var(--text); }
 
 .tab-placeholder {
   padding: 24px 28px;

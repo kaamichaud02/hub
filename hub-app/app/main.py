@@ -13,7 +13,8 @@ from .schemas import (
 )
 from .timesheets_db import get_session_st
 from .timesheets_models import AuthUser
-from .timesheets_auth import get_verified_email, extract_token, CF_ACCESS_TEAM_DOMAIN
+from .timesheets_auth import get_verified_email, extract_token, get_current_user, CF_ACCESS_TEAM_DOMAIN
+from .timesheets_schemas import CurrentUser, WhoamiUpdate
 from .timesheets_routes import router as timesheets_router
 from .admin_routes import router as admin_router
 
@@ -87,7 +88,7 @@ def whoami(request: Request, session_st: Session = Depends(get_session_st)):
     if not email:
         return {
             "email": None, "first_name": None, "last_name": None,
-            "is_superuser": False, "logout_url": None,
+            "is_superuser": False, "has_account": False, "logout_url": None,
         }
     user = session_st.exec(
         select(AuthUser).where(func.lower(AuthUser.email) == email.lower())
@@ -97,6 +98,34 @@ def whoami(request: Request, session_st: Session = Depends(get_session_st)):
         "first_name": user.first_name if user else None,
         "last_name": user.last_name if user else None,
         "is_superuser": user.is_superuser if user else False,
+        "has_account": user is not None,
+        "logout_url": f"https://{CF_ACCESS_TEAM_DOMAIN}/cdn-cgi/access/logout",
+    }
+
+
+@app.patch("/api/whoami")
+def update_whoami(
+    payload: WhoamiUpdate,
+    user: CurrentUser = Depends(get_current_user),
+    session_st: Session = Depends(get_session_st),
+):
+    # Permet à l'utilisateur connecté de modifier son propre prénom/nom dans
+    # auth_user (même champs que suivi_temps/l'admin) — n'existe que pour les
+    # comptes déjà créés (get_current_user renvoie 403 sinon).
+    user_row = session_st.get(AuthUser, user.id)
+    if payload.first_name is not None:
+        user_row.first_name = payload.first_name
+    if payload.last_name is not None:
+        user_row.last_name = payload.last_name
+    session_st.add(user_row)
+    session_st.commit()
+    session_st.refresh(user_row)
+    return {
+        "email": user_row.email,
+        "first_name": user_row.first_name,
+        "last_name": user_row.last_name,
+        "is_superuser": user_row.is_superuser,
+        "has_account": True,
         "logout_url": f"https://{CF_ACCESS_TEAM_DOMAIN}/cdn-cgi/access/logout",
     }
 

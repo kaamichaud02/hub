@@ -4,7 +4,8 @@ const boardView = document.getElementById("boardView");
 const pageTitle = document.getElementById("pageTitle");
 const modalRoot = document.getElementById("modalRoot");
 const suiviTempsPlaceholder = document.getElementById("suiviTempsPlaceholder");
-const sidebarFooter = document.getElementById("sidebarFooter");
+const sidebarFooterText = document.getElementById("sidebarFooterText");
+const sidebarSettingsBtn = document.getElementById("sidebarSettingsBtn");
 
 let currentBoardId = null;
 
@@ -14,11 +15,49 @@ async function loadWhoami() {
   try {
     const data = await api("/api/whoami");
     window.currentUser = data;
-    sidebarFooter.textContent = data.email || "Non authentifié";
   } catch {
-    window.currentUser = { email: null, is_superuser: false, logout_url: null };
-    sidebarFooter.textContent = "Non authentifié";
+    window.currentUser = { email: null, is_superuser: false, has_account: false, logout_url: null };
   }
+  renderSidebarFooter();
+}
+
+function renderSidebarFooter() {
+  const u = window.currentUser || {};
+  const fullName = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
+  sidebarFooterText.textContent = fullName || u.email || "Non authentifié";
+  sidebarSettingsBtn.hidden = !u.has_account;
+}
+
+sidebarSettingsBtn.addEventListener("click", openProfileModal);
+
+function openProfileModal() {
+  const u = window.currentUser || {};
+  modalRoot.innerHTML = `
+    <div class="modal-overlay">
+      <div class="modal">
+        <h2>Mon nom</h2>
+        <input id="pFirstName" placeholder="Prénom" value="${escapeHtml(u.first_name || "")}" />
+        <input id="pLastName" placeholder="Nom" value="${escapeHtml(u.last_name || "")}" />
+        <div class="modal-actions">
+          <button class="cancel-btn" id="pCancel">Annuler</button>
+          <button class="primary-btn" id="pSave">Enregistrer</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById("pCancel").onclick = closeModal;
+  document.getElementById("pSave").onclick = async () => {
+    const data = await api("/api/whoami", {
+      method: "PATCH",
+      body: JSON.stringify({
+        first_name: document.getElementById("pFirstName").value.trim(),
+        last_name: document.getElementById("pLastName").value.trim(),
+      }),
+    });
+    window.currentUser = data;
+    renderSidebarFooter();
+    closeModal();
+  };
 }
 
 // ---------- Sections (sidebar, niveau 1) ----------
