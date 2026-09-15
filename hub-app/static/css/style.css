@@ -75,6 +75,17 @@ html, body {
 
 .ghost-btn:hover { border-color: var(--accent-default); }
 
+.search-input {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 7px 12px;
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  min-width: 220px;
+}
+
 /* ---------- Sidebar : sections (niveau 1) ---------- */
 
 .section-list {

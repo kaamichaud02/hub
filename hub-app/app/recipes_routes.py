@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from .database import get_session
-from .recipes_models import Recipe, RecipeComment
+from .recipes_models import Recipe, RecipeComment, RecipeRevision
 from .recipes_schemas import RecipeCreate, RecipeUpdate, RecipeExtractRequest, CommentCreate
 from .timesheets_auth import get_current_user
 from .timesheets_schemas import CurrentUser
@@ -16,7 +16,7 @@ def _serialize_recipe_summary(r: Recipe) -> dict:
     return {
         "id": r.id, "title": r.title, "image_url": r.image_url,
         "prep_minutes": r.prep_minutes, "cook_minutes": r.cook_minutes,
-        "servings": r.servings,
+        "servings": r.servings, "tags": r.tags,
     }
 
 
@@ -25,12 +25,22 @@ def _serialize_recipe_detail(r: Recipe, comments: list[RecipeComment]) -> dict:
         "id": r.id, "title": r.title, "ingredients": r.ingredients, "steps": r.steps,
         "prep_minutes": r.prep_minutes, "cook_minutes": r.cook_minutes,
         "servings": r.servings, "source_url": r.source_url, "image_url": r.image_url,
-        "added_by_email": r.added_by_email,
+        "tags": r.tags, "added_by_email": r.added_by_email,
         "comments": [
             {"id": c.id, "author_email": c.author_email, "author_name": c.author_name,
              "body": c.body, "created_at": c.created_at}
             for c in comments
         ],
+    }
+
+
+def _serialize_revision(rev: RecipeRevision) -> dict:
+    return {
+        "id": rev.id, "title": rev.title, "ingredients": rev.ingredients, "steps": rev.steps,
+        "prep_minutes": rev.prep_minutes, "cook_minutes": rev.cook_minutes,
+        "servings": rev.servings, "source_url": rev.source_url, "image_url": rev.image_url,
+        "tags": rev.tags, "edited_by_email": rev.edited_by_email,
+        "snapshotted_at": rev.snapshotted_at,
     }
 
 
@@ -56,7 +66,12 @@ def create_recipe(
     user: CurrentUser = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    recipe = Recipe(**payload.model_dump(), added_by_email=user.email)
+    data = payload.model_dump()
+    if data.get("ingredients"):
+        lines = [l for l in data["ingredients"].split("\n") if l.strip()]
+        data["ingredients"] = "\n".join(recipes_ai.normalize_units(lines))
+
+    recipe = Recipe(**data, added_by_email=user.email)
     session.add(recipe)
     session.commit()
     session.refresh(recipe)
@@ -70,7 +85,8 @@ def extract_recipe(
     session: Session = Depends(get_session),
 ):
     """Appelée à la fois par l'extension navigateur et par "Coller une
-    recette" côté hub — extrait une recette structurée via Claude et la
+    recette" côté hub — extrait une recette structurée via Claude (unités
+    déjà normalisées en métrique par le prompt d'extraction) et la
     sauvegarde directement (pas d'aperçu, décision produit)."""
     try:
         extracted = recipes_ai.extract_recipe(payload.content, payload.source_url, payload.title_hint)
@@ -89,6 +105,7 @@ def extract_recipe(
         servings=extracted.servings,
         source_url=payload.source_url,
         image_url=extracted.image_url,
+        tags=", ".join(extracted.tags),
         added_by_email=user.email,
     )
     session.add(recipe)
@@ -110,15 +127,45 @@ def get_recipe(
     return _serialize_recipe_detail(recipe, comments)
 
 
+@router.get("/{recipe_id}/revisions")
+def list_revisions(
+    recipe_id: int,
+    _: CurrentUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    _get_recipe_or_404(session, recipe_id)
+    revisions = session.exec(
+        select(RecipeRevision)
+        .where(RecipeRevision.recipe_id == recipe_id)
+        .order_by(RecipeRevision.snapshotted_at.desc())
+    ).all()
+    return [_serialize_revision(rev) for rev in revisions]
+
+
 @router.patch("/{recipe_id}")
 def update_recipe(
     recipe_id: int,
     payload: RecipeUpdate,
-    _: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
     recipe = _get_recipe_or_404(session, recipe_id)
     updates = payload.model_dump(exclude_unset=True)
+
+    if updates:
+        # Instantané de l'état actuel avant modification, pour pouvoir
+        # consulter les versions précédentes (voir GET .../revisions).
+        session.add(RecipeRevision(
+            recipe_id=recipe.id, title=recipe.title, ingredients=recipe.ingredients,
+            steps=recipe.steps, prep_minutes=recipe.prep_minutes, cook_minutes=recipe.cook_minutes,
+            servings=recipe.servings, source_url=recipe.source_url, image_url=recipe.image_url,
+            tags=recipe.tags, edited_by_email=user.email,
+        ))
+
+    if "ingredients" in updates and updates["ingredients"]:
+        lines = [l for l in updates["ingredients"].split("\n") if l.strip()]
+        updates["ingredients"] = "\n".join(recipes_ai.normalize_units(lines))
+
     for field, value in updates.items():
         setattr(recipe, field, value)
     recipe.updated_at = datetime.utcnow()
@@ -140,6 +187,8 @@ def delete_recipe(
     recipe = _get_recipe_or_404(session, recipe_id)
     for comment in session.exec(select(RecipeComment).where(RecipeComment.recipe_id == recipe_id)).all():
         session.delete(comment)
+    for revision in session.exec(select(RecipeRevision).where(RecipeRevision.recipe_id == recipe_id)).all():
+        session.delete(revision)
     session.delete(recipe)
     session.commit()
     return {"ok": True}

@@ -4,8 +4,11 @@
 
 window.RecipesUI = (() => {
   let rRoot = null;
-  let rView = "list"; // "list" | "detail" | "form" | "paste"
+  let rView = "list"; // "list" | "detail" | "form" | "paste" | "revisions" | "revision"
   let rCurrentId = null;
+  let rCurrentRevisionId = null;
+  let rAllRecipes = []; // cache pour le filtre de recherche côté client
+  let rSearchTerm = "";
 
   function mount(root) {
     rRoot = root;
@@ -20,6 +23,8 @@ window.RecipesUI = (() => {
       else if (rView === "detail") p = renderDetail(rCurrentId);
       else if (rView === "form") p = renderForm(rCurrentId);
       else if (rView === "paste") p = renderPaste();
+      else if (rView === "revisions") p = renderRevisions(rCurrentId);
+      else if (rView === "revision") p = renderRevisionDetail(rCurrentId, rCurrentRevisionId);
     } catch (err) {
       showError(err);
       return;
@@ -27,9 +32,10 @@ window.RecipesUI = (() => {
     if (p && typeof p.catch === "function") p.catch(showError);
   }
 
-  function goTo(view, id = null) {
+  function goTo(view, id = null, revisionId = null) {
     rView = view;
     rCurrentId = id;
+    rCurrentRevisionId = revisionId;
     render();
   }
 
@@ -45,6 +51,8 @@ window.RecipesUI = (() => {
       <div class="st-toolbar">
         <button class="ghost-btn" id="rNewBtn">+ Nouvelle recette</button>
         <button class="ghost-btn" id="rPasteBtn">Coller une recette</button>
+        <span class="spacer"></span>
+        <input id="rSearch" class="search-input" placeholder="Rechercher (titre, tags)…" value="${escapeAttr(rSearchTerm)}" />
       </div>
     `;
   }
@@ -52,6 +60,17 @@ window.RecipesUI = (() => {
   function wireToolbar() {
     rRoot.querySelector("#rNewBtn")?.addEventListener("click", () => goTo("form", null));
     rRoot.querySelector("#rPasteBtn")?.addEventListener("click", () => goTo("paste"));
+    rRoot.querySelector("#rSearch")?.addEventListener("input", (e) => {
+      rSearchTerm = e.target.value;
+      renderGrid();
+    });
+  }
+
+  function tagChips(tags) {
+    const list = (tags || "").split(",").map((t) => t.trim()).filter(Boolean);
+    return list.length
+      ? `<div class="task-tags">${list.map((t) => `<span class="tag-chip">${escapeHtml(t)}</span>`).join("")}</div>`
+      : "";
   }
 
   // ---------- Vue liste ----------
@@ -60,17 +79,32 @@ window.RecipesUI = (() => {
     rRoot.innerHTML = toolbar() + `<div id="rGrid"></div>`;
     wireToolbar();
 
-    const gridEl = rRoot.querySelector("#rGrid");
-    let recipes;
     try {
-      recipes = await api("/api/recipes");
+      rAllRecipes = await api("/api/recipes");
     } catch {
-      gridEl.innerHTML = `<div class="empty-hint">Impossible de charger les recettes.</div>`;
+      rRoot.querySelector("#rGrid").innerHTML = `<div class="empty-hint">Impossible de charger les recettes.</div>`;
+      return;
+    }
+    renderGrid();
+  }
+
+  function renderGrid() {
+    const gridEl = rRoot.querySelector("#rGrid");
+    if (!gridEl) return;
+
+    if (!rAllRecipes.length) {
+      gridEl.innerHTML = `<div class="empty-hint">Aucune recette pour l'instant. Colle une recette depuis un site, ou ajoute-la manuellement.</div>`;
       return;
     }
 
+    const term = rSearchTerm.trim().toLowerCase();
+    const recipes = term
+      ? rAllRecipes.filter((r) => r.title.toLowerCase().includes(term) || (r.tags || "").toLowerCase().includes(term))
+      : rAllRecipes;
+
     if (!recipes.length) {
-      gridEl.innerHTML = `<div class="empty-hint">Aucune recette pour l'instant. Colle une recette depuis un site, ou ajoute-la manuellement.</div>`;
+      gridEl.className = "";
+      gridEl.innerHTML = `<div class="empty-hint">Aucune recette ne correspond à "${escapeHtml(rSearchTerm)}".</div>`;
       return;
     }
 
@@ -81,6 +115,7 @@ window.RecipesUI = (() => {
         <div class="recipe-card-body">
           <div class="recipe-card-title">${escapeHtml(r.title)}</div>
           <div class="recipe-card-meta">${recipeMeta(r)}</div>
+          ${tagChips(r.tags)}
         </div>
       </div>
     `).join("");
@@ -119,6 +154,7 @@ window.RecipesUI = (() => {
     bodyEl.innerHTML = `
       <h3>${escapeHtml(r.title)}</h3>
       <div class="recipe-detail-meta">${recipeMeta(r)}</div>
+      ${tagChips(r.tags)}
       ${r.image_url ? `<img class="recipe-detail-img" src="${escapeAttr(r.image_url)}" alt="" />` : ""}
       ${r.source_url ? `<p><a href="${escapeAttr(r.source_url)}" target="_blank" rel="noopener">Source</a></p>` : ""}
       <h4>Ingrédients</h4>
@@ -127,6 +163,7 @@ window.RecipesUI = (() => {
       <ol>${steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol>
       <div class="st-toolbar">
         <button class="ghost-btn" id="rEditBtn">Modifier</button>
+        <button class="ghost-btn" id="rHistoryBtn">Historique</button>
         <button class="danger-btn" id="rDeleteBtn">Supprimer</button>
       </div>
       <h4>Commentaires</h4>
@@ -148,6 +185,7 @@ window.RecipesUI = (() => {
       : `<div class="empty-hint">Aucun commentaire.</div>`;
 
     bodyEl.querySelector("#rEditBtn").addEventListener("click", () => goTo("form", id));
+    bodyEl.querySelector("#rHistoryBtn").addEventListener("click", () => goTo("revisions", id));
     bodyEl.querySelector("#rDeleteBtn").addEventListener("click", async () => {
       if (!confirm(`Supprimer la recette "${r.title}" ?`)) return;
       await api(`/api/recipes/${id}`, { method: "DELETE" });
@@ -186,6 +224,9 @@ window.RecipesUI = (() => {
         <label>Portions <input id="fServings" type="number" min="0" value="${r && r.servings != null ? r.servings : ""}" /></label>
       </div>
       <div class="st-form-row">
+        <label style="flex:1">Tags (séparés par des virgules) <input id="fTags" value="${escapeAttr(r ? (r.tags || "") : "")}" placeholder="dessert, végétarien, italien" /></label>
+      </div>
+      <div class="st-form-row">
         <label style="flex:1">URL source <input id="fSourceUrl" value="${escapeAttr(r ? (r.source_url || "") : "")}" /></label>
       </div>
       <div class="st-form-row">
@@ -211,6 +252,7 @@ window.RecipesUI = (() => {
         prep_minutes: numOrNull(rRoot.querySelector("#fPrep").value),
         cook_minutes: numOrNull(rRoot.querySelector("#fCook").value),
         servings: numOrNull(rRoot.querySelector("#fServings").value),
+        tags: rRoot.querySelector("#fTags").value.trim(),
         source_url: rRoot.querySelector("#fSourceUrl").value.trim() || null,
         image_url: rRoot.querySelector("#fImageUrl").value.trim() || null,
       };
@@ -231,6 +273,76 @@ window.RecipesUI = (() => {
   function numOrNull(v) {
     const n = parseInt(v, 10);
     return Number.isFinite(n) ? n : null;
+  }
+
+  function fmtDateTime(iso) {
+    const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
+    return d.toLocaleString("fr-CA", { dateStyle: "medium", timeStyle: "short" });
+  }
+
+  // ---------- Vue historique (liste des versions précédentes) ----------
+
+  async function renderRevisions(id) {
+    rRoot.innerHTML = `<div class="st-toolbar"><button class="ghost-btn" id="rBackBtn">&larr; Retour</button></div><h3>Historique des modifications</h3><div id="rRevList"></div>`;
+    rRoot.querySelector("#rBackBtn").addEventListener("click", () => goTo("detail", id));
+
+    const listEl = rRoot.querySelector("#rRevList");
+    let revisions;
+    try {
+      revisions = await api(`/api/recipes/${id}/revisions`);
+    } catch {
+      listEl.innerHTML = `<div class="empty-hint">Impossible de charger l'historique.</div>`;
+      return;
+    }
+
+    if (!revisions.length) {
+      listEl.innerHTML = `<div class="empty-hint">Aucune modification enregistrée pour l'instant — l'historique se remplit à chaque édition.</div>`;
+      return;
+    }
+
+    listEl.innerHTML = revisions.map((rev) => `
+      <div class="timesheet-row" data-id="${rev.id}">
+        <span class="ts-date">${fmtDateTime(rev.snapshotted_at)}</span>
+        <span class="ts-meta">Modifié par ${escapeHtml(rev.edited_by_email || "?")}</span>
+      </div>
+    `).join("");
+
+    listEl.querySelectorAll(".timesheet-row").forEach((row) => {
+      row.addEventListener("click", () => goTo("revision", id, Number(row.dataset.id)));
+    });
+  }
+
+  async function renderRevisionDetail(id, revisionId) {
+    rRoot.innerHTML = `<div class="st-toolbar"><button class="ghost-btn" id="rBackBtn">&larr; Retour à l'historique</button></div><div id="rRevBody"></div>`;
+    rRoot.querySelector("#rBackBtn").addEventListener("click", () => goTo("revisions", id));
+
+    const bodyEl = rRoot.querySelector("#rRevBody");
+    let revisions;
+    try {
+      revisions = await api(`/api/recipes/${id}/revisions`);
+    } catch {
+      bodyEl.innerHTML = `<div class="empty-hint">Impossible de charger cette version.</div>`;
+      return;
+    }
+    const rev = revisions.find((r) => r.id === revisionId);
+    if (!rev) {
+      bodyEl.innerHTML = `<div class="empty-hint">Version introuvable.</div>`;
+      return;
+    }
+
+    const ingredients = rev.ingredients.split("\n").filter((l) => l.trim());
+    const steps = rev.steps.split("\n").filter((l) => l.trim());
+
+    bodyEl.innerHTML = `
+      <p style="color:var(--muted);font-size:0.82rem;">Version du ${fmtDateTime(rev.snapshotted_at)}, modifiée par ${escapeHtml(rev.edited_by_email || "?")} — lecture seule.</p>
+      <h3>${escapeHtml(rev.title)}</h3>
+      <div class="recipe-detail-meta">${recipeMeta(rev)}</div>
+      ${tagChips(rev.tags)}
+      <h4>Ingrédients</h4>
+      <ul>${ingredients.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>
+      <h4>Étapes</h4>
+      <ol>${steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol>
+    `;
   }
 
   // ---------- Vue "Coller une recette" (extraction Claude) ----------

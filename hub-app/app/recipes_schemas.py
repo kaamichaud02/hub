@@ -11,6 +11,7 @@ class RecipeCreate(BaseModel):
     servings: Optional[int] = None
     source_url: Optional[str] = None
     image_url: Optional[str] = None
+    tags: str = ""
 
 
 class RecipeUpdate(BaseModel):
@@ -22,6 +23,7 @@ class RecipeUpdate(BaseModel):
     servings: Optional[int] = None
     source_url: Optional[str] = None
     image_url: Optional[str] = None
+    tags: Optional[str] = None
 
 
 class RecipeExtractRequest(BaseModel):
@@ -43,3 +45,10 @@ class ExtractedRecipe(BaseModel):
     cook_minutes: Optional[int] = None
     servings: Optional[int] = None
     image_url: Optional[str] = None
+    tags: List[str] = []
+
+
+class NormalizedIngredients(BaseModel):
+    """Schéma de sortie pour la conversion impérial -> métrique d'une liste
+    d'ingrédients saisis manuellement."""
+    ingredients: List[str]
