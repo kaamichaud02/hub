@@ -222,11 +222,11 @@ window.RecipesUI = (() => {
       <div class="recipe-detail-meta">${recipeMeta(r)}</div>
       ${tagChips(r.tags)}
       ${imageSrc(r) ? `<img class="recipe-detail-img" src="${escapeAttr(imageSrc(r))}" alt="" />` : ""}
+      <p style="color:var(--muted);font-size:0.78rem;margin:4px 0;">📋 Astuce : copie une image (clic droit → "Copier l'image" sur un site, ou une capture d'écran) puis appuie sur <strong>Ctrl+V</strong> n'importe où sur cette page pour l'ajouter directement — pas besoin du bouton ci-dessous dans ce cas.</p>
       <div class="st-form-row" style="align-items:center;">
         <input type="file" id="rImageFile" accept="image/*" />
-        <button class="ghost-btn" id="rImageUploadBtn">Téléverser une image</button>
+        <button class="ghost-btn" id="rImageUploadBtn">Téléverser ce fichier</button>
         ${r.has_uploaded_image ? `<button class="ghost-btn" id="rImageDeleteBtn">Retirer l'image</button>` : ""}
-        <span style="color:var(--muted);font-size:0.78rem;">ou colle une image (Ctrl+V)</span>
         <span id="rImageStatus" style="color:var(--muted);font-size:0.8rem;"></span>
       </div>
       ${r.source_url ? `<p><a href="${escapeAttr(r.source_url)}" target="_blank" rel="noopener">Source</a></p>` : ""}
