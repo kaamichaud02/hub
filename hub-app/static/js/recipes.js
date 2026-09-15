@@ -15,8 +15,17 @@ window.RecipesUI = (() => {
     render();
   }
 
+  function unmount() {
+    // Appelé quand on quitte la section Recette (voir app.js::setActiveSection)
+    // — sans ça le listener de collage d'image resterait actif ailleurs dans le hub.
+    setImagePasteHandler(null);
+  }
+
   function render() {
     if (!rRoot) return;
+    // Le listener de collage d'image n'a de sens que sur la vue détail —
+    // retiré par défaut à chaque rendu, renderDetail le rétablit si besoin.
+    setImagePasteHandler(null);
     let p;
     try {
       if (rView === "list") p = renderList();
@@ -30,6 +39,39 @@ window.RecipesUI = (() => {
       return;
     }
     if (p && typeof p.catch === "function") p.catch(showError);
+  }
+
+  // ---------- Collage d'image (Ctrl+V) ----------
+
+  let rImagePasteHandler = null;
+
+  function setImagePasteHandler(handler) {
+    if (rImagePasteHandler) document.removeEventListener("paste", rImagePasteHandler);
+    rImagePasteHandler = handler;
+    if (rImagePasteHandler) document.addEventListener("paste", rImagePasteHandler);
+  }
+
+  async function handleImagePaste(e, id, bodyEl) {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    let imageFile = null;
+    for (const item of items) {
+      if (item.type && item.type.startsWith("image/")) {
+        imageFile = item.getAsFile();
+        break;
+      }
+    }
+    if (!imageFile) return; // pas d'image dans le presse-papiers — laisse le collage normal (texte) se faire
+
+    e.preventDefault();
+    const statusEl = bodyEl.querySelector("#rImageStatus");
+    if (statusEl) statusEl.textContent = "Envoi de l'image collée…";
+    try {
+      await uploadRecipeImage(id, imageFile);
+      goTo("detail", id);
+    } catch (err) {
+      if (statusEl) statusEl.textContent = `Erreur : ${err.message}`;
+    }
   }
 
   function goTo(view, id = null, revisionId = null) {
@@ -184,6 +226,7 @@ window.RecipesUI = (() => {
         <input type="file" id="rImageFile" accept="image/*" />
         <button class="ghost-btn" id="rImageUploadBtn">Téléverser une image</button>
         ${r.has_uploaded_image ? `<button class="ghost-btn" id="rImageDeleteBtn">Retirer l'image</button>` : ""}
+        <span style="color:var(--muted);font-size:0.78rem;">ou colle une image (Ctrl+V)</span>
         <span id="rImageStatus" style="color:var(--muted);font-size:0.8rem;"></span>
       </div>
       ${r.source_url ? `<p><a href="${escapeAttr(r.source_url)}" target="_blank" rel="noopener">Source</a></p>` : ""}
@@ -233,6 +276,7 @@ window.RecipesUI = (() => {
       await api(`/api/recipes/${id}/image`, { method: "DELETE" });
       goTo("detail", id);
     });
+    setImagePasteHandler((e) => handleImagePaste(e, id, bodyEl));
     bodyEl.querySelector("#rDeleteBtn").addEventListener("click", async () => {
       if (!confirm(`Supprimer la recette "${r.title}" ?`)) return;
       await api(`/api/recipes/${id}`, { method: "DELETE" });
@@ -436,5 +480,5 @@ window.RecipesUI = (() => {
     return escapeHtml(str).replace(/"/g, "&quot;");
   }
 
-  return { mount };
+  return { mount, unmount };
 })();

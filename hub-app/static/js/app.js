@@ -93,6 +93,8 @@ function setActiveSection(section) {
   recipesPlaceholder.hidden = section !== "recette";
   pageTitle.hidden = isKanban;
 
+  if (section !== "recette") window.RecipesUI.unmount();
+
   if (isKanban) {
     loadBoardTabs(currentBoardId);
   } else {
