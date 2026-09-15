@@ -18,10 +18,12 @@ from .timesheets_auth import get_verified_email, extract_token, get_current_user
 from .timesheets_schemas import CurrentUser, WhoamiUpdate
 from .timesheets_routes import router as timesheets_router
 from .admin_routes import router as admin_router
+from .recipes_routes import router as recipes_router
 
 app = FastAPI(title="Hub - kaa.zone")
 app.include_router(timesheets_router)
 app.include_router(admin_router)
+app.include_router(recipes_router)
 
 
 @app.on_event("startup")

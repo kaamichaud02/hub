@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Hub — Capture de recette",
+  "version": "1.0.0",
+  "description": "Capture la recette de la page active et l'envoie au hub (kaa.zone) pour extraction automatique par IA.",
+  "action": {
+    "default_title": "Capturer cette recette dans le hub"
+  },
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": [
+    "https://hubtest.kaa.zone/*",
+    "https://hub.kaa.zone/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

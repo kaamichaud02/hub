@@ -2,6 +2,7 @@ import os
 from sqlmodel import SQLModel, Session, create_engine
 
 from .models import Board, Column, Task
+from .recipes_models import Recipe, RecipeComment
 
 DB_HOST = os.getenv("HUB_DB_HOST", "localhost")
 DB_PORT = os.getenv("HUB_DB_PORT", "5432")
@@ -20,7 +21,10 @@ def init_db():
     # qui pointent vers une base Postgres différente (ST_DATABASE_*). On limite donc
     # explicitement create_all() aux tables possédées par le hub — les tables
     # suivi_temps existent déjà et ne doivent jamais être créées/modifiées ici.
-    SQLModel.metadata.create_all(engine, tables=[Board.__table__, Column.__table__, Task.__table__])
+    SQLModel.metadata.create_all(engine, tables=[
+        Board.__table__, Column.__table__, Task.__table__,
+        Recipe.__table__, RecipeComment.__table__,
+    ])
 
 
 def get_session():

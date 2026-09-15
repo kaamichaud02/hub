@@ -296,6 +296,63 @@ html, body {
 }
 .danger-btn:hover { background: var(--danger); color: #0a0a0a; }
 
+/* ---------- Recette ---------- */
+
+.recipe-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.recipe-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.12s ease;
+}
+.recipe-card:hover { border-color: var(--accent-default); }
+
+.recipe-card-img {
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  display: block;
+  background: var(--panel-2);
+}
+
+.recipe-card-img-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.2rem;
+}
+
+.recipe-card-body { padding: 10px 12px; }
+
+.recipe-card-title { font-weight: 600; font-size: 0.9rem; margin-bottom: 4px; }
+
+.recipe-card-meta {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+.recipe-detail-meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-family: var(--mono);
+  margin-bottom: 10px;
+}
+
+.recipe-detail-img {
+  max-width: 320px;
+  border-radius: var(--radius);
+  display: block;
+  margin-bottom: 10px;
+}
+
 .main-area {
   flex: 1;
   display: flex;

@@ -4,6 +4,7 @@ const boardView = document.getElementById("boardView");
 const pageTitle = document.getElementById("pageTitle");
 const modalRoot = document.getElementById("modalRoot");
 const suiviTempsPlaceholder = document.getElementById("suiviTempsPlaceholder");
+const recipesPlaceholder = document.getElementById("recipesPlaceholder");
 const sidebarFooterText = document.getElementById("sidebarFooterText");
 const sidebarSettingsBtn = document.getElementById("sidebarSettingsBtn");
 const appVersionEl = document.getElementById("appVersion");
@@ -78,6 +79,8 @@ for (const item of sectionItems) {
   item.addEventListener("click", () => setActiveSection(item.dataset.section));
 }
 
+const SECTION_TITLES = { suivi_temps: "Suivi de temps", recette: "Recette" };
+
 function setActiveSection(section) {
   for (const item of sectionItems) {
     item.classList.toggle("active", item.dataset.section === section);
@@ -86,14 +89,16 @@ function setActiveSection(section) {
   const isKanban = section === "kanban";
   boardTabs.hidden = !isKanban;
   boardView.hidden = !isKanban;
-  suiviTempsPlaceholder.hidden = isKanban;
+  suiviTempsPlaceholder.hidden = section !== "suivi_temps";
+  recipesPlaceholder.hidden = section !== "recette";
   pageTitle.hidden = isKanban;
 
   if (isKanban) {
     loadBoardTabs(currentBoardId);
   } else {
-    pageTitle.textContent = "Suivi de temps";
-    window.TimesheetsUI.mount(suiviTempsPlaceholder);
+    pageTitle.textContent = SECTION_TITLES[section] || "";
+    if (section === "suivi_temps") window.TimesheetsUI.mount(suiviTempsPlaceholder);
+    if (section === "recette") window.RecipesUI.mount(recipesPlaceholder);
   }
 }
 
