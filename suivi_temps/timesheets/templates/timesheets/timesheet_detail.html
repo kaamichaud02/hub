@@ -1,0 +1,115 @@
+{% extends 'timesheets/base.html' %}
+{% block content %}
+<div class="page-header mt-4">
+    <h1 class="page-title">
+        <i class="bi bi-{% if timesheet %}pencil-square{% else %}plus-circle{% endif %} me-2" style="color:#4F46E5;"></i>
+        {% if timesheet %}Modifier{% else %}Nouvelle{% endif %} feuille de temps
+    </h1>
+    <a href="{% url 'timesheet_list' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Retour
+    </a>
+</div>
+
+<form method="post" id="timesheet-form">
+    {% csrf_token %}
+
+    <!-- Date & résumé -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <span class="fw-600" style="font-weight:600;font-size:.9rem;">
+                <i class="bi bi-calendar-date me-2 text-primary"></i>Informations générales
+            </span>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Date</label>
+                    {{ timesheet_form.date }}
+                    {% if timesheet_form.date.errors %}
+                        <div class="text-danger mt-1" style="font-size:.8rem;">{{ timesheet_form.date.errors.0 }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label">Résumé <span class="text-muted fw-normal">(optionnel)</span></label>
+                    {{ timesheet_form.summary }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Entrées horaires -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="fw-600" style="font-weight:600;font-size:.9rem;">
+                <i class="bi bi-clock me-2 text-primary"></i>Entrées horaires
+            </span>
+            <button type="button" id="add-entry" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-plus-lg me-1"></i>Ajouter une entrée
+            </button>
+        </div>
+        <div class="card-body">
+            {{ formset.management_form }}
+            <div id="entries-container">
+                {% for form in formset %}
+                <div class="entry-card d-flex align-items-center gap-3 flex-wrap">
+                    {{ form.id }}
+                    <div class="flex-fill" style="min-width:140px;">
+                        <label class="form-label mb-1">Début</label>
+                        {{ form.start_time }}
+                        {% if form.start_time.errors %}
+                            <div class="text-danger mt-1" style="font-size:.8rem;">{{ form.start_time.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="flex-fill" style="min-width:140px;">
+                        <label class="form-label mb-1">Fin</label>
+                        {{ form.end_time }}
+                        {% if form.end_time.errors %}
+                            <div class="text-danger mt-1" style="font-size:.8rem;">{{ form.end_time.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+                    {% if form.instance.pk %}
+                    <div class="pt-3">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" name="{{ form.prefix }}-DELETE" id="id_{{ form.prefix }}-DELETE">
+                            <label class="form-check-label text-danger" for="id_{{ form.prefix }}-DELETE" style="font-size:.8rem;">
+                                <i class="bi bi-trash me-1"></i>Supprimer
+                            </label>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary px-4">
+            <i class="bi bi-check-lg me-1"></i>Enregistrer
+        </button>
+        <a href="{% url 'timesheet_list' %}" class="btn btn-outline-secondary">Annuler</a>
+    </div>
+</form>
+
+<script>
+document.getElementById('add-entry').addEventListener('click', function () {
+    const container = document.getElementById('entries-container');
+    const formCount = container.querySelectorAll('.entry-card').length;
+    const totalForms = document.getElementById('id_form-TOTAL_FORMS');
+    const html = `
+        <div class="entry-card d-flex align-items-center gap-3 flex-wrap">
+            <input type="hidden" name="form-${formCount}-id" id="id_form-${formCount}-id">
+            <div class="flex-fill" style="min-width:140px;">
+                <label class="form-label mb-1">Début</label>
+                <input type="time" class="form-control" name="form-${formCount}-start_time" id="id_form-${formCount}-start_time">
+            </div>
+            <div class="flex-fill" style="min-width:140px;">
+                <label class="form-label mb-1">Fin</label>
+                <input type="time" class="form-control" name="form-${formCount}-end_time" id="id_form-${formCount}-end_time">
+            </div>
+        </div>`;
+    container.insertAdjacentHTML('beforeend', html);
+    totalForms.value = parseInt(totalForms.value) + 1;
+});
+</script>
+{% endblock %}

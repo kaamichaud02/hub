@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hub · kaa.zone</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <button id="backBtn" class="back-btn" hidden>&larr; Hub</button>
+    <h1 id="pageTitle">Hub</h1>
+    <button id="newBoardBtn" class="ghost-btn">+ Projet</button>
+  </header>
+
+  <main id="hubView" class="hub-grid"></main>
+
+  <main id="boardView" class="board-columns" hidden></main>
+
+  <div id="modalRoot"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

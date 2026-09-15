@@ -1,0 +1,97 @@
+{% extends 'timesheets/base.html' %}
+{% block content %}
+<div class="page-header mt-4">
+    <h1 class="page-title">
+        <i class="bi bi-calendar3 me-2" style="color:#4F46E5;"></i>
+        Feuilles de temps
+    </h1>
+    <a href="{% url 'timesheet_create' %}" class="btn btn-primary">
+        <i class="bi bi-plus-lg me-1"></i>Nouvelle feuille
+    </a>
+</div>
+
+{% if weeks %}
+    {% for week in weeks %}
+    <div class="card mb-3">
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <button class="week-toggle" type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#week-{{ week.monday|date:'Y-m-d' }}"
+                    aria-expanded="{% if week.monday == current_monday %}true{% else %}false{% endif %}">
+                    <i class="bi bi-chevron-down"></i>
+                    <span>Semaine du {{ week.monday|date:"d/m/Y" }} au {{ week.sunday|date:"d/m/Y" }}</span>
+                    <span class="badge-hours ms-2">
+                        {{ week.total_hours }}h{% if week.total_minutes > 0 %} {{ week.total_minutes }}min{% endif %}
+                    </span>
+                </button>
+                <div class="d-flex gap-2">
+                    <a href="{% url 'generate_pdf_report' week.monday|date:'Y-m-d' %}" class="btn btn-sm btn-outline-danger">
+                        <i class="bi bi-file-earmark-pdf me-1"></i>PDF
+                    </a>
+                    <a href="{% url 'generate_word_report' week.monday|date:'Y-m-d' %}" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-file-earmark-word me-1"></i>Word
+                    </a>
+                </div>
+            </div>
+        </div>
+        <div id="week-{{ week.monday|date:'Y-m-d' }}" class="collapse {% if week.monday == current_monday %}show{% endif %}">
+            <div class="card-body p-0">
+                <table class="table mb-0">
+                    <thead>
+                        <tr>
+                            <th class="ps-4">Date</th>
+                            <th>Entrées horaires</th>
+                            <th>Total</th>
+                            <th class="pe-4 text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for timesheet in week.timesheets %}
+                        <tr>
+                            <td class="ps-4 fw-500" style="white-space:nowrap;font-weight:500;">
+                                {{ timesheet.date|date:"d/m/Y" }}
+                            </td>
+                            <td>
+                                {% if timesheet.entries.all %}
+                                    <div class="d-flex flex-wrap gap-2">
+                                        {% for entry in timesheet.entries.all %}
+                                            <span class="badge-hours">
+                                                <i class="bi bi-clock me-1"></i>{{ entry.start_time|time:"H:i" }} – {{ entry.end_time|time:"H:i" }}
+                                            </span>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <span class="text-muted" style="font-size:.8rem;">Aucune entrée</span>
+                                {% endif %}
+                            </td>
+                            <td style="white-space:nowrap;">
+                                {% with hours=timesheet.total_hours.0 minutes=timesheet.total_hours.1 %}
+                                    <span class="fw-600" style="font-weight:600;">{{ hours }}h{% if minutes > 0 %} {{ minutes }}min{% endif %}</span>
+                                {% endwith %}
+                            </td>
+                            <td class="pe-4 text-end">
+                                <a href="{% url 'timesheet_detail' timesheet.pk %}" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-pencil me-1"></i>Modifier
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="card p-5 text-center">
+        <div class="mb-3" style="font-size:2.5rem;color:#CBD5E1;">
+            <i class="bi bi-calendar-x"></i>
+        </div>
+        <p class="text-muted mb-3">Aucune feuille de temps pour le moment.</p>
+        <a href="{% url 'timesheet_create' %}" class="btn btn-primary mx-auto" style="width:fit-content;">
+            <i class="bi bi-plus-lg me-1"></i>Créer ma première feuille
+        </a>
+    </div>
+{% endif %}
+{% endblock %}

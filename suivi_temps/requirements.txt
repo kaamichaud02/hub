@@ -1,0 +1,11 @@
+django
+requests
+reportlab
+python-docx
+psycopg2-binary
+charset-normalizer
+sqlparse
+tzdata
+python-decouple
+PyJWT
+cryptography

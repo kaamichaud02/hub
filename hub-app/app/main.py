@@ -1,0 +1,239 @@
+from typing import List
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from sqlmodel import Session, select
+
+from .database import init_db, get_session
+from .models import Board, Column, Task
+from .schemas import (
+    BoardCreate, BoardReorder,
+    ColumnCreate, ColumnReorder,
+    TaskCreate, TaskUpdate, TaskMove,
+)
+
+app = FastAPI(title="Hub - kaa.zone")
+
+
+@app.on_event("startup")
+def on_startup():
+    init_db()
+    seed_default_data()
+
+
+def seed_default_data():
+    """Crée le board suivi_temps avec ses colonnes/tâches par défaut si la base est vide."""
+    from sqlmodel import Session as _S
+    from .database import engine
+    with _S(engine) as session:
+        existing = session.exec(select(Board)).first()
+        if existing:
+            return
+
+        board = Board(
+            name="suivi_temps",
+            icon="🕒",
+            color="#00d4a0",
+            description="Refonte de l'app de lookup employés/feuilles de temps (ex-OpenERP)",
+            position=0,
+        )
+        session.add(board)
+        session.commit()
+        session.refresh(board)
+
+        col_names = ["Idées", "À faire", "En cours", "Terminé"]
+        columns = {}
+        for i, name in enumerate(col_names):
+            col = Column(board_id=board.id, name=name, position=i)
+            session.add(col)
+            session.commit()
+            session.refresh(col)
+            columns[name] = col
+
+        seed_tasks = [
+            ("À faire", "Réorganiser la structure du projet", "restructuration du code Flask, séparation routes/modèles/templates"),
+            ("À faire", "Ajouter le hub comme point d'entrée", "lien depuis hub.kaa.zone vers time.aim-recycling.com"),
+            ("Idées", "Export CSV en plus du PDF", ""),
+            ("Idées", "Recherche employé par nom partiel", ""),
+        ]
+        for i, (col_name, title, desc) in enumerate(seed_tasks):
+            task = Task(column_id=columns[col_name].id, title=title, description=desc, position=i)
+            session.add(task)
+        session.commit()
+
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.get("/")
+def serve_index():
+    return FileResponse("static/index.html")
+
+
+# ---------- Boards ----------
+
+@app.get("/api/boards")
+def list_boards(session: Session = Depends(get_session)):
+    boards = session.exec(select(Board).order_by(Board.position)).all()
+    return boards
+
+
+@app.post("/api/boards")
+def create_board(payload: BoardCreate, session: Session = Depends(get_session)):
+    max_pos = session.exec(select(Board)).all()
+    board = Board(
+        name=payload.name,
+        icon=payload.icon,
+        color=payload.color,
+        description=payload.description,
+        position=len(max_pos),
+    )
+    session.add(board)
+    session.commit()
+    session.refresh(board)
+
+    for i, name in enumerate(["À faire", "En cours", "Terminé"]):
+        session.add(Column(board_id=board.id, name=name, position=i))
+    session.commit()
+    return board
+
+
+@app.get("/api/boards/{board_id}")
+def get_board(board_id: int, session: Session = Depends(get_session)):
+    board = session.get(Board, board_id)
+    if not board:
+        raise HTTPException(404, "Board introuvable")
+    columns = session.exec(select(Column).where(Column.board_id == board_id).order_by(Column.position)).all()
+    result = []
+    for col in columns:
+        tasks = session.exec(select(Task).where(Task.column_id == col.id).order_by(Task.position)).all()
+        result.append({"id": col.id, "name": col.name, "position": col.position, "tasks": tasks})
+    return {"board": board, "columns": result}
+
+
+@app.patch("/api/boards/{board_id}/reorder")
+def reorder_board(board_id: int, payload: BoardReorder, session: Session = Depends(get_session)):
+    board = session.get(Board, board_id)
+    if not board:
+        raise HTTPException(404, "Board introuvable")
+    board.position = payload.position
+    session.add(board)
+    session.commit()
+    return board
+
+
+@app.delete("/api/boards/{board_id}")
+def delete_board(board_id: int, session: Session = Depends(get_session)):
+    board = session.get(Board, board_id)
+    if not board:
+        raise HTTPException(404, "Board introuvable")
+    session.delete(board)
+    session.commit()
+    return {"ok": True}
+
+
+# ---------- Columns ----------
+
+@app.post("/api/columns")
+def create_column(payload: ColumnCreate, session: Session = Depends(get_session)):
+    existing = session.exec(select(Column).where(Column.board_id == payload.board_id)).all()
+    col = Column(board_id=payload.board_id, name=payload.name, position=len(existing))
+    session.add(col)
+    session.commit()
+    session.refresh(col)
+    return col
+
+
+@app.patch("/api/columns/{column_id}/reorder")
+def reorder_column(column_id: int, payload: ColumnReorder, session: Session = Depends(get_session)):
+    col = session.get(Column, column_id)
+    if not col:
+        raise HTTPException(404, "Colonne introuvable")
+    col.position = payload.position
+    session.add(col)
+    session.commit()
+    return col
+
+
+@app.delete("/api/columns/{column_id}")
+def delete_column(column_id: int, session: Session = Depends(get_session)):
+    col = session.get(Column, column_id)
+    if not col:
+        raise HTTPException(404, "Colonne introuvable")
+    session.delete(col)
+    session.commit()
+    return {"ok": True}
+
+
+# ---------- Tasks ----------
+
+@app.post("/api/tasks")
+def create_task(payload: TaskCreate, session: Session = Depends(get_session)):
+    existing = session.exec(select(Task).where(Task.column_id == payload.column_id)).all()
+    task = Task(
+        column_id=payload.column_id,
+        title=payload.title,
+        description=payload.description or "",
+        tags=payload.tags or "",
+        position=len(existing),
+    )
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    return task
+
+
+@app.patch("/api/tasks/{task_id}")
+def update_task(task_id: int, payload: TaskUpdate, session: Session = Depends(get_session)):
+    task = session.get(Task, task_id)
+    if not task:
+        raise HTTPException(404, "Tâche introuvable")
+    if payload.title is not None:
+        task.title = payload.title
+    if payload.description is not None:
+        task.description = payload.description
+    if payload.tags is not None:
+        task.tags = payload.tags
+    from datetime import datetime
+    task.updated_at = datetime.utcnow()
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    return task
+
+
+@app.patch("/api/tasks/{task_id}/move")
+def move_task(task_id: int, payload: TaskMove, session: Session = Depends(get_session)):
+    """Déplace une tâche vers une colonne (même colonne ou une autre) et une position donnée."""
+    task = session.get(Task, task_id)
+    if not task:
+        raise HTTPException(404, "Tâche introuvable")
+
+    old_column_id = task.column_id
+    task.column_id = payload.column_id
+    task.position = payload.position
+    session.add(task)
+    session.commit()
+
+    # Renormalise les positions dans la colonne de destination (et d'origine si différente)
+    for col_id in {old_column_id, payload.column_id}:
+        tasks = session.exec(
+            select(Task).where(Task.column_id == col_id).order_by(Task.position)
+        ).all()
+        for i, t in enumerate(tasks):
+            if t.position != i:
+                t.position = i
+                session.add(t)
+    session.commit()
+    session.refresh(task)
+    return task
+
+
+@app.delete("/api/tasks/{task_id}")
+def delete_task(task_id: int, session: Session = Depends(get_session)):
+    task = session.get(Task, task_id)
+    if not task:
+        raise HTTPException(404, "Tâche introuvable")
+    session.delete(task)
+    session.commit()
+    return {"ok": True}
