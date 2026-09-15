@@ -1,5 +1,5 @@
 from typing import List
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlmodel import Session, select
@@ -68,6 +68,15 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
 def serve_index():
     return FileResponse("static/index.html")
+
+
+@app.get("/api/whoami")
+def whoami(request: Request):
+    # Injecté par Cloudflare Access en amont (Zero Trust). Pas de validation du
+    # JWT ici — voir suivi_temps/timesheets/cf_access.py pour la logique de
+    # validation complète, à porter côté hub quand son auth sera construite.
+    email = request.headers.get("Cf-Access-Authenticated-User-Email")
+    return {"email": email}
 
 
 # ---------- Boards ----------

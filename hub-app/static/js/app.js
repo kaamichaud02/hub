@@ -1,11 +1,47 @@
-const hubView = document.getElementById("hubView");
+const sectionItems = document.querySelectorAll(".section-item");
+const boardTabs = document.getElementById("boardTabs");
 const boardView = document.getElementById("boardView");
 const pageTitle = document.getElementById("pageTitle");
-const backBtn = document.getElementById("backBtn");
-const newBoardBtn = document.getElementById("newBoardBtn");
 const modalRoot = document.getElementById("modalRoot");
+const suiviTempsPlaceholder = document.getElementById("suiviTempsPlaceholder");
+const sidebarFooter = document.getElementById("sidebarFooter");
 
 let currentBoardId = null;
+
+// ---------- Utilisateur connecté (Cloudflare Access) ----------
+
+async function loadWhoami() {
+  try {
+    const { email } = await api("/api/whoami");
+    sidebarFooter.textContent = email || "Non authentifié";
+  } catch {
+    sidebarFooter.textContent = "Non authentifié";
+  }
+}
+
+// ---------- Sections (sidebar, niveau 1) ----------
+
+for (const item of sectionItems) {
+  item.addEventListener("click", () => setActiveSection(item.dataset.section));
+}
+
+function setActiveSection(section) {
+  for (const item of sectionItems) {
+    item.classList.toggle("active", item.dataset.section === section);
+  }
+
+  const isKanban = section === "kanban";
+  boardTabs.hidden = !isKanban;
+  boardView.hidden = !isKanban;
+  suiviTempsPlaceholder.hidden = isKanban;
+  pageTitle.hidden = isKanban;
+
+  if (isKanban) {
+    loadBoardTabs(currentBoardId);
+  } else {
+    pageTitle.textContent = "Suivi de temps";
+  }
+}
 
 // ---------- API helpers ----------
 
@@ -19,73 +55,63 @@ async function api(path, options = {}) {
   return res.json();
 }
 
-// ---------- Navigation ----------
+// ---------- Onglets Kanban (niveau 2, en haut) ----------
 
-function showHub() {
-  currentBoardId = null;
-  boardView.hidden = true;
-  hubView.hidden = false;
-  backBtn.hidden = true;
-  newBoardBtn.hidden = false;
-  pageTitle.textContent = "Hub";
-  loadHub();
-}
-
-function showBoard(boardId) {
-  currentBoardId = boardId;
-  hubView.hidden = true;
-  boardView.hidden = false;
-  backBtn.hidden = false;
-  newBoardBtn.hidden = true;
-  loadBoard(boardId);
-}
-
-backBtn.addEventListener("click", showHub);
-
-// ---------- Hub (tuiles) ----------
-
-async function loadHub() {
+async function loadBoardTabs(selectId = null) {
   const boards = await api("/api/boards");
-  hubView.innerHTML = "";
-
-  if (boards.length === 0) {
-    hubView.innerHTML = `<div class="empty-hint">Aucun projet pour l'instant. Clique sur "+ Projet" pour en créer un.</div>`;
-    return;
-  }
+  boardTabs.innerHTML = "";
 
   for (const board of boards) {
-    const tile = document.createElement("div");
-    tile.className = "board-tile";
-    tile.dataset.id = board.id;
-    tile.style.setProperty("--tile-color", board.color || "#00d4a0");
-    tile.innerHTML = `
-      <div class="tile-icon">${board.icon || "📋"}</div>
-      <div class="tile-name">${escapeHtml(board.name)}</div>
-      <div class="tile-desc">${escapeHtml(board.description || "")}</div>
-      <div class="tile-meta"><span>#${board.id}</span></div>
+    const tab = document.createElement("div");
+    tab.className = "board-tab";
+    tab.dataset.id = board.id;
+    tab.style.setProperty("--tile-color", board.color || "#00d4a0");
+    tab.innerHTML = `
+      <span class="tab-icon">${board.icon || "📋"}</span>
+      <span class="tab-name">${escapeHtml(board.name)}</span>
     `;
-    tile.addEventListener("click", (e) => {
-      if (tile.classList.contains("dragging-just-ended")) return;
-      showBoard(board.id);
-    });
-    hubView.appendChild(tile);
+    tab.addEventListener("click", () => selectBoard(board.id));
+    boardTabs.appendChild(tab);
   }
 
-  new Sortable(hubView, {
+  const addBtn = document.createElement("button");
+  addBtn.className = "add-board-tab";
+  addBtn.title = "Nouveau projet";
+  addBtn.textContent = "+";
+  addBtn.addEventListener("click", () => openBoardModal());
+  boardTabs.appendChild(addBtn);
+
+  new Sortable(boardTabs, {
     animation: 150,
+    filter: ".add-board-tab",
     onEnd: async (evt) => {
-      const tiles = [...hubView.querySelectorAll(".board-tile")];
+      const tabs = [...boardTabs.querySelectorAll(".board-tab")];
       await Promise.all(
-        tiles.map((t, i) => api(`/api/boards/${t.dataset.id}/reorder`, {
+        tabs.map((t, i) => api(`/api/boards/${t.dataset.id}/reorder`, {
           method: "PATCH",
           body: JSON.stringify({ position: i }),
         }))
       );
     },
   });
+
+  if (boards.length === 0) {
+    currentBoardId = null;
+    boardView.innerHTML = `<div class="empty-hint">Aucun projet pour l'instant. Clique sur "+" pour en créer un.</div>`;
+    return;
+  }
+
+  const targetId = selectId ?? boards[0].id;
+  selectBoard(targetId);
 }
 
-newBoardBtn.addEventListener("click", () => openBoardModal());
+function selectBoard(boardId) {
+  currentBoardId = boardId;
+  for (const tab of boardTabs.querySelectorAll(".board-tab")) {
+    tab.classList.toggle("active", Number(tab.dataset.id) === Number(boardId));
+  }
+  loadBoard(boardId);
+}
 
 function openBoardModal() {
   const icons = ["📋", "🕒", "🛠️", "🌐", "🔥", "📦", "🧩", "⚙️"];
@@ -108,7 +134,7 @@ function openBoardModal() {
   document.getElementById("mSave").onclick = async () => {
     const name = document.getElementById("mName").value.trim();
     if (!name) return;
-    await api("/api/boards", {
+    const created = await api("/api/boards", {
       method: "POST",
       body: JSON.stringify({
         name,
@@ -118,7 +144,7 @@ function openBoardModal() {
       }),
     });
     closeModal();
-    loadHub();
+    loadBoardTabs(created.id);
   };
 }
 
@@ -130,7 +156,6 @@ function closeModal() {
 
 async function loadBoard(boardId) {
   const data = await api(`/api/boards/${boardId}`);
-  pageTitle.textContent = `${data.board.icon || ""} ${data.board.name}`;
   boardView.innerHTML = "";
 
   for (const col of data.columns) {
@@ -257,4 +282,5 @@ function escapeHtml(str) {
 
 // ---------- Init ----------
 
-showHub();
+setActiveSection("kanban");
+loadWhoami();

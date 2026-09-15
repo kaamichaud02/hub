@@ -7,15 +7,35 @@
   <link rel="stylesheet" href="/static/css/style.css" />
 </head>
 <body>
-  <header class="topbar">
-    <button id="backBtn" class="back-btn" hidden>&larr; Hub</button>
-    <h1 id="pageTitle">Hub</h1>
-    <button id="newBoardBtn" class="ghost-btn">+ Projet</button>
-  </header>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h1>Hub</h1>
+      </div>
+      <nav id="sectionList" class="section-list">
+        <div class="section-item active" data-section="kanban">
+          <span class="item-icon">🗂️</span>
+          <span class="item-name">Kanban</span>
+        </div>
+        <div class="section-item" data-section="suivi_temps">
+          <span class="item-icon">🕒</span>
+          <span class="item-name">Suivi de temps</span>
+        </div>
+      </nav>
+      <div id="sidebarFooter" class="sidebar-footer"></div>
+    </aside>
 
-  <main id="hubView" class="hub-grid"></main>
-
-  <main id="boardView" class="board-columns" hidden></main>
+    <div class="main-area">
+      <header class="topbar">
+        <div id="boardTabs" class="board-tabs"></div>
+        <h2 id="pageTitle" class="section-title" hidden>Suivi de temps</h2>
+      </header>
+      <main id="boardView" class="board-columns"></main>
+      <div id="suiviTempsPlaceholder" class="tab-placeholder" hidden>
+        Section à venir dans une prochaine phase (déploiement séparé de l'app suivi_temps).
+      </div>
+    </div>
+  </div>
 
   <div id="modalRoot"></div>
 
