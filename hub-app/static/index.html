@@ -8,7 +8,8 @@
 </head>
 <body>
   <div class="app-shell">
-    <aside class="sidebar">
+    <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
+    <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <h1>Hub</h1>
         <span id="appVersion" class="app-version"></span>
@@ -35,6 +36,7 @@
 
     <div class="main-area">
       <header class="topbar">
+        <button id="mobileMenuBtn" class="mobile-menu-btn" title="Menu" aria-label="Menu">☰</button>
         <div id="boardTabs" class="board-tabs"></div>
         <h2 id="pageTitle" class="section-title" hidden></h2>
       </header>

@@ -8,8 +8,26 @@ const recipesPlaceholder = document.getElementById("recipesPlaceholder");
 const sidebarFooterText = document.getElementById("sidebarFooterText");
 const sidebarSettingsBtn = document.getElementById("sidebarSettingsBtn");
 const appVersionEl = document.getElementById("appVersion");
+const sidebarEl = document.getElementById("sidebar");
+const sidebarBackdrop = document.getElementById("sidebarBackdrop");
+const mobileMenuBtn = document.getElementById("mobileMenuBtn");
 
 let currentBoardId = null;
+
+// ---------- Sidebar mobile (tiroir masqué par défaut sous ~768px) ----------
+
+function openSidebar() {
+  sidebarEl.classList.add("open");
+  sidebarBackdrop.classList.add("visible");
+}
+
+function closeSidebar() {
+  sidebarEl.classList.remove("open");
+  sidebarBackdrop.classList.remove("visible");
+}
+
+mobileMenuBtn.addEventListener("click", openSidebar);
+sidebarBackdrop.addEventListener("click", closeSidebar);
 
 // ---------- Version déployée (pour vérifier rapidement si le cache sert du vieux code) ----------
 
@@ -85,6 +103,7 @@ function setActiveSection(section) {
   for (const item of sectionItems) {
     item.classList.toggle("active", item.dataset.section === section);
   }
+  closeSidebar(); // sans effet sur desktop (sidebar toujours visible), referme le tiroir sur mobile
 
   const isKanban = section === "kanban";
   boardTabs.hidden = !isKanban;
